@@ -1,0 +1,38 @@
+{
+  "name": "audit-code-health",
+  "version": "1.0.0",
+  "description": "Analyzes codebase health and provides actionable recommendations for improving code quality, maintainability, and technical debt",
+  "author": "Your Name",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<owner>/audit-code-health-skill"
+  },
+  "keywords": [
+    "code-quality",
+    "technical-debt",
+    "code-health",
+    "static-analysis",
+    "refactoring",
+    "maintainability"
+  ],
+  "categories": [
+    "code-analysis",
+    "developer-tools",
+    "quality-assurance"
+  ],
+  "compatibility": {
+    "agents": [
+      "claude-code",
+      "cursor",
+      "windsurf"
+    ]
+  },
+  "requirements": {
+    "tools": [],
+    "permissions": [
+      "read-files",
+      "execute-commands"
+    ]
+  }
+}
