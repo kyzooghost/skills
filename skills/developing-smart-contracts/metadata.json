@@ -1,0 +1,27 @@
+{
+  "name": "developing-smart-contracts",
+  "version": "1.0.0",
+  "description": "Solidity smart contract development. Covers NatSpec documentation, naming conventions, file layout, and code style.",
+  "author": "kyzooghost",
+  "license": "AGPL-3.0",
+  "keywords": [
+    "solidity",
+    "smart-contracts",
+    "blockchain",
+    "ethereum",
+    "natspec",
+    "code-style"
+  ],
+  "categories": [
+    "development",
+    "blockchain",
+    "solidity"
+  ],
+  "triggers": [
+    "solidity",
+    "smart contract",
+    "natspec",
+    "contract development",
+    "solidity best practices"
+  ]
+}
