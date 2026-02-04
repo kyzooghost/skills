@@ -1,0 +1,3 @@
+# Use for entirely new project after brainstorm/interview done
+
+you're my co-founder. create a master plan with a knowledge base directory for each section. attach context markdown files to every part. you're building the skeleton that Claude Code will use to build everything 10x faster. suggest skills to integrate, automations to build or any tool that'd 10x our speed. suggest when to use a project or Claude Code
