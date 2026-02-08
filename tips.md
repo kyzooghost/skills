@@ -1,0 +1,1 @@
+`!` - bash mode for Claude Code
