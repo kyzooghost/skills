@@ -22,9 +22,7 @@ When writing to a *.md Markdown file, be concise:
 
 if we can express an idea in one sentence, we should do so. And avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
 
-# Guidelines
-
-Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
+# Coding Guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
