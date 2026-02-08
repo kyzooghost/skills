@@ -2,6 +2,8 @@
 
 # Strict Rules
 
+If anything about the user's request is unclear, interview me relentlessly and very in-depth using the AskUserQuestionTool about literally anything: technical implementation, system design, bottlenecks, UX, concerns, tradeoffs, etc. 
+
 When writing new features, please use /test-driven-development and write tests according to /unit-test
 
 If an environment variable is added or removed, update the corresponding .env.sample file in the same project to match.
@@ -19,8 +21,6 @@ Do NOT do `git push`
 When writing to a *.md Markdown file, be concise:
 - If an idea can be expressed in one sentence, do so
 - Avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
-
-if we can express an idea in one sentence, we should do so. And avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
 
 # Coding Guidelines
 
