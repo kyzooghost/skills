@@ -22,6 +22,8 @@ When writing to a *.md Markdown file, be concise:
 - If an idea can be expressed in one sentence, do so
 - Avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
 
+Do not write with emdash `—`, write with regular dash `-` instead
+
 # Coding Guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
