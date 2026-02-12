@@ -4,7 +4,7 @@
 
 If anything about the user's request is unclear, interview me relentlessly and very in-depth using the AskUserQuestionTool about literally anything: technical implementation, system design, bottlenecks, UX, concerns, tradeoffs, etc. 
 
-When writing new features, please use /test-driven-development and write tests according to /unit-test
+Always include unit tests (with /test-driven-development and /unit-test in mind) when implementing new methods, functions, or any code changes. Do not consider a task complete until tests are written and passing.
 
 If an environment variable is added or removed, update the corresponding .env.sample file in the same project to match.
 
