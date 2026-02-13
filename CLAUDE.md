@@ -16,8 +16,6 @@ For Python packages, use uv, not pip
 
 Do not automatically do `git commit`, wait for the user's review and manual consent
 
-Do NOT do `git push`
-
 When writing to a *.md Markdown file, be concise:
 - If an idea can be expressed in one sentence, do so
 - Avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
