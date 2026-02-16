@@ -33,19 +33,26 @@ If no origin remote exists, stop with: "Error: no git origin remote found. This 
 
 ## Step 2: Comment Fetching
 
-Fetch both comment types in parallel:
-- Review comments: `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments`
-- Issue comments: `gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments`
+Fetch all three data sources in parallel:
+- Review comments (REST): `gh api repos/{owner}/{repo}/pulls/{PR_NUMBER}/comments --paginate`
+- Issue comments (REST): `gh api repos/{owner}/{repo}/issues/{PR_NUMBER}/comments --paginate`
+- Review threads (GraphQL): query `repository.pullRequest.reviewThreads` to get `isResolved`, thread node `id`, and first comment's `databaseId` for each thread. Paginate if `hasNextPage` is true. Include the thread node `id` (not the comment databaseId) - this is needed later to resolve threads.
 
 ### Bot Detection
 
 A comment is from a bot if either condition is true:
-- `author.type == "Bot"` (the `user.type` field in the API response)
+- `user.type == "Bot"` in the REST API response
 - Username matches a known bot: `github-actions[bot]`, `coderabbitai`, `cursor[bot]`, `copilot`, `sonarcloud[bot]`, `codecov[bot]`, `dependabot[bot]`
 
 ### Filtering to Unresolved
 
-For review comments: include only comments where the thread is not resolved. A top-level review comment has `in_reply_to_id` as null - these start threads. Skip comments in threads that have been explicitly resolved.
+Use a two-step approach to correctly identify unresolved bot comments:
+
+1. **Fetch all review threads via GraphQL** to get resolved/unresolved status and `databaseId` for each thread's first comment. This is the authoritative source for thread resolution status.
+2. **Fetch review comments via REST API** to get full metadata (`user.type`, `user.login`, `path`, `line`, `body`, `html_url`).
+3. **Join on databaseId**: match REST comment `id` to GraphQL `databaseId`. A review comment is unresolved if its matching GraphQL thread has `isResolved == false`.
+
+**IMPORTANT - GraphQL vs REST login discrepancy:** The GraphQL API returns bot logins without the `[bot]` suffix (e.g., `cursor`), while the REST API includes it (e.g., `cursor[bot]`). Always use the REST API's `user.type == "Bot"` field for bot detection, not the GraphQL author login. When filtering GraphQL threads for unresolved status, match by `databaseId` rather than author login.
 
 For issue comments: include all bot comments (issue comments have no resolution mechanism).
 
@@ -82,8 +89,11 @@ After presenting the report, go through each comment and ask the user what to do
 
 - **Valid comments**: Ask "Apply this fix?" If yes, edit the file with the proposed fix using the Edit tool. Do NOT commit - leave changes unstaged.
 - **Invalid comments**: Ask "Dismiss this comment on the PR?" If yes:
-  - For review comments: reply to the thread via `gh api` with a brief dismissal message explaining why the concern does not apply
-  - For issue comments: reply via `gh api` with the same dismissal message
+  - For review comments: reply to the thread via `gh api` with a brief dismissal message explaining why the concern does not apply, then **resolve the thread** using the GraphQL `resolveReviewThread` mutation. To resolve, you need the thread's GraphQL node ID - fetch it from the review threads query (the `id` field on the thread node, not the comment's `databaseId`). Example mutation:
+    ```
+    gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "NODE_ID"}) { thread { isResolved } } }'
+    ```
+  - For issue comments: reply via `gh api` with the same dismissal message (issue comments cannot be resolved)
 - **Uncertain comments**: Ask the user whether to treat as valid or invalid, then proceed accordingly
 
 At the end, report:
