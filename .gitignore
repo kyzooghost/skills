@@ -35,4 +35,5 @@ coverage/
 .skills-test/
 
 .claude
+.agents
 tmp/
