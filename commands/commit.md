@@ -20,7 +20,13 @@ To create a commit, just type:
 3. Performs a `git diff` to understand what changes are being committed
 4. Analyzes the diff to determine if multiple distinct logical changes are present
 5. If multiple distinct changes are detected, suggests breaking the commit into multiple smaller commits
-6. For each commit (or the single commit if not split), creates a commit message
+6. For each distinct logical change, checks for and runs project linting:
+   a. For each group of changed files, walk up the directory tree to find the nearest `package.json` (TS/JS) or `build.gradle`/`build.gradle.kts` (Gradle). Deduplicate so each project is linted only once.
+   b. **TS/JS projects:** Read the nearest `package.json` `scripts` field. If `lint:fix` exists, run it (e.g., `npm run lint:fix`). Otherwise if `lint` exists, run that. If neither exists, skip.
+   c. **Gradle projects:** Check `build.gradle` or `build.gradle.kts` for lint-related task definitions. If found, run the matching task via `./gradlew <task>` from that project directory.
+   d. If linting produces auto-fixes, re-stage the fixed files with `git add` before proceeding.
+   e. If no lint command is found for a project, skip silently - this is fine.
+7. For each commit (or the single commit if not split), creates a commit message
 
 ## Best Practices for Commits
 
