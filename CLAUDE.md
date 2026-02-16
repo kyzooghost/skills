@@ -10,10 +10,6 @@ If an environment variable is added or removed, update the corresponding .env.sa
 
 When installing new dependencies, pin exact versions. Do NOT use floating versions, ranges, wildcards, or "latest".
 
-For JS packages, use pnpm, not npm
-
-For Python packages, use uv, not pip
-
 Do not automatically do `git commit`, wait for the user's review and manual consent
 
 When writing to a *.md Markdown file, be concise:
