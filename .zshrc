@@ -8,6 +8,10 @@ alias k=kubectl
 alias v=vim
 alias claude-yolo="claude --dangerously-skip-permissions"
 
+rep() {
+  cd ~/Desktop/repos
+}
+
 set-claude() {
     code ~/.claude
 }
