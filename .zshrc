@@ -6,7 +6,7 @@ git config --global push.autoSetupRemote true
 
 alias k=kubectl
 alias v=vim
-alias claude-yolo="claude --dangerously-skip-permissions"
+alias claude-y="claude --dangerously-skip-permissions"
 
 rep() {
   cd ~/Desktop/repos
@@ -118,13 +118,13 @@ incognito() {
 function delswitch() {
     # Get current branch name
     local current_branch=$(git symbolic-ref --short HEAD)
-    
+
     # If we're already on main, inform the user and exit
     if [ "$current_branch" = "main" ]; then
         echo "Already on main branch."
         return 0
     fi
-    
+
     git checkout main
     git branch -D "$current_branch"
     git pull --prune
