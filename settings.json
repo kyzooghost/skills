@@ -27,7 +27,6 @@
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(gh pr list:*)",
-      "Bash(gh pr view:*)",
       "Bash(gh diff:*)",
       "Bash(find:*)",
       "Bash(pnpm test:*)",
