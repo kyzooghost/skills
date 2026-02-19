@@ -62,7 +62,7 @@ If no commits ahead of main, stop with: "Error: no changes to create PR for. Com
 ## Step 4: Detect Related Ticket
 
 Scan the conversation context for ticket references:
-- Jira pattern: `[A-Z]+-\d+` (e.g., BBF-1234, PROJ-567)
+- Jira pattern: `[A-Z]+-\d+` (e.g., ABC-1234, PROJ-567)
 - GitHub issue pattern: `#\d+` (e.g., #123)
 
 Priority:
