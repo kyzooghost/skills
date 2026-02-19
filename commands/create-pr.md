@@ -39,3 +39,22 @@ Behavior:
 - If `--update` flag provided and no PR exists: stop with "Error: no PR exists for this branch. Use `/create-pr` to create one."
 - If no flag provided and PR exists: stop with "A PR already exists for this branch: {url}. Use `/create-pr --update` to update it."
 - Otherwise: proceed to next step
+
+## Step 3: Gather Context
+
+Get the diff against main:
+```bash
+git diff main...HEAD
+```
+
+Get commit messages since branching:
+```bash
+git log main..HEAD --pretty=format:"%s%n%b"
+```
+
+Get list of changed files:
+```bash
+git diff main...HEAD --name-only
+```
+
+If no commits ahead of main, stop with: "Error: no changes to create PR for. Commit your changes first."
