@@ -58,3 +58,15 @@ git diff main...HEAD --name-only
 ```
 
 If no commits ahead of main, stop with: "Error: no changes to create PR for. Commit your changes first."
+
+## Step 4: Detect Related Ticket
+
+Scan the conversation context for ticket references:
+- Jira pattern: `[A-Z]+-\d+` (e.g., BBF-1234, PROJ-567)
+- GitHub issue pattern: `#\d+` (e.g., #123)
+
+Priority:
+1. If found in conversation, use it
+2. If not found, set Related to "None"
+
+Do NOT prompt the user for a ticket. Only offer to create one if the user explicitly asks.
