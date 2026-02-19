@@ -111,3 +111,47 @@ Generate each section based on the diff:
 | `**/migrations/**` | Migration runs without errors |
 | `**/api/**`, `**/*api*` | API contract tests pass |
 | Any config/env file | Verify deployment in target environment |
+
+## Step 6: Preview and Create
+
+Display the generated PR to the user in this format:
+
+```
+## PR Preview
+
+**Title:** {generated title}
+
+---
+
+{generated description}
+
+---
+
+Ready to create this PR? (Proceeding unless you say otherwise)
+```
+
+Then create or update the PR:
+
+**For new PR:**
+```bash
+gh pr create --title "{title}" --body "{description}"
+```
+
+**For update (`--update` flag):**
+```bash
+gh pr edit --title "{title}" --body "{description}"
+```
+
+After creation/update, show the PR URL.
+
+## Error Handling
+
+- `gh` CLI not installed or not authenticated: "Error: `gh` CLI is not available or not authenticated. Run `gh auth login` first."
+- PR creation fails: show the error from `gh` and stop
+
+## Ground Rules
+
+- Do NOT prompt for user input unless explicitly requested (e.g., ticket creation)
+- Auto-generate everything from diff/context
+- Show preview before creating
+- Never auto-commit - PR creation only
