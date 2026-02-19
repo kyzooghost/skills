@@ -70,3 +70,44 @@ Priority:
 2. If not found, set Related to "None"
 
 Do NOT prompt the user for a ticket. Only offer to create one if the user explicitly asks.
+
+## Step 5: Generate PR Description
+
+Analyze the diff and commits to generate:
+
+### Title
+Generate a concise title from the diff analysis. Use conventional commit format:
+- `feat: ...` for new features
+- `fix: ...` for bug fixes
+- `chore: ...` for maintenance
+- `docs: ...` for documentation
+- `refactor: ...` for refactoring
+
+### Description Sections
+
+Generate each section based on the diff:
+
+**Summary** - Bullet points of key changes (3-5 items max)
+
+**Problem** - Infer from diff/commits what issue this solves. If unclear, describe what the changes do.
+
+**Solution** - How the changes address the problem. Include code snippets if relevant (e.g., YAML config examples).
+
+**Related** - The detected ticket, or "None" if not found.
+
+**Scope** - Infer from file paths:
+- Infrastructure paths (e.g., `cluster-core/dev/`) → environment name
+- Source code paths → "Feature: [inferred feature name]"
+- Mixed → list all affected areas
+
+**Test Plan** - Auto-generate checklist based on change types:
+
+| File Pattern | Test Plan Item |
+|-------------|----------------|
+| `*.yaml`, `*.yml` | YAML syntax validation passes |
+| `*.ts`, `*.js`, `*.py`, `*.go` | Unit tests pass |
+| `*.ts`, `*.js`, `*.py`, `*.go` | Build succeeds |
+| `**/helm/**`, `**/argocd/**` | ArgoCD syncs successfully |
+| `**/migrations/**` | Migration runs without errors |
+| `**/api/**`, `**/*api*` | API contract tests pass |
+| Any config/env file | Verify deployment in target environment |
