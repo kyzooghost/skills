@@ -30,3 +30,12 @@ Parse `owner/repo` from the URL:
 - Handle URLs with or without the trailing `.git`
 
 If no origin remote exists, stop with: "Error: no git origin remote found. This command requires a GitHub remote."
+
+## Step 2: Check for Existing PR
+
+Run: `gh pr list --head $(git branch --show-current) --json number,url --jq '.[0]'`
+
+Behavior:
+- If `--update` flag provided and no PR exists: stop with "Error: no PR exists for this branch. Use `/create-pr` to create one."
+- If no flag provided and PR exists: stop with "A PR already exists for this branch: {url}. Use `/create-pr --update` to update it."
+- Otherwise: proceed to next step
