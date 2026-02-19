@@ -19,3 +19,14 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 6. Generates a complete PR description
 7. Shows a preview to the user
 8. Creates or updates the PR via `gh` CLI
+
+## Step 1: Repo Resolution
+
+Run `git remote get-url origin` to get the remote URL.
+
+Parse `owner/repo` from the URL:
+- HTTPS format: `https://github.com/owner/repo.git` - extract between `github.com/` and `.git`
+- SSH format: `git@github.com:owner/repo.git` - extract between `:` and `.git`
+- Handle URLs with or without the trailing `.git`
+
+If no origin remote exists, stop with: "Error: no git origin remote found. This command requires a GitHub remote."
