@@ -59,6 +59,13 @@ git diff main...HEAD --name-only
 
 If no commits ahead of main, stop with: "Error: no changes to create PR for. Commit your changes first."
 
+Check for PR template:
+```bash
+find .github -iname 'pull_request_template.md' -o -iname 'pull_request_template' 2>/dev/null | head -1
+```
+
+If found, read the template file. If a `.github/PULL_REQUEST_TEMPLATE/` directory exists with multiple templates, use `default.md` or the first file found.
+
 ## Step 4: Detect Related Ticket
 
 Scan the conversation context for ticket references:
@@ -73,7 +80,7 @@ Do NOT prompt the user for a ticket. Only offer to create one if the user explic
 
 ## Step 5: Generate PR Description
 
-Analyze the diff and commits to generate:
+Analyze the diff and commits to generate the PR content.
 
 ### Title
 Generate a concise title from the diff analysis. Use conventional commit format:
@@ -83,9 +90,11 @@ Generate a concise title from the diff analysis. Use conventional commit format:
 - `docs: ...` for documentation
 - `refactor: ...` for refactoring
 
-### Description Sections
+### Description
 
-Generate each section based on the diff:
+**If a PR template was found:** Fill in each section of the template based on the diff/commit analysis. Preserve the template's structure and headings. Leave optional sections empty or mark as "N/A" if not applicable.
+
+**If no template exists:** Generate each section based on the diff:
 
 **Summary** - Bullet points of key changes (3-5 items max)
 
