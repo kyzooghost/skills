@@ -48,7 +48,6 @@
       "Bash(dd *)",
       "Bash(curl *|bash*)",
       "Bash(wget *|bash*)",
-      "Bash(git push:*)",
       "Bash(git reset --hard*)",
 
       "Edit(~/.bashrc)",
