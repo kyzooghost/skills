@@ -10,15 +10,15 @@ If an environment variable is added or removed, update the corresponding .env.* 
 
 Use shared const enums or constant objects instead of raw string literals when introducing new string values. Never scatter raw strings across files.
 
-When writing explanatory code comments, write them for a developer with zero prior context on the codebase. Be explicit about the 'why', not just the 'what'.
-
 When installing new dependencies, pin exact versions. Do NOT use floating versions, ranges, wildcards, or "latest".
 
-Do not automatically do `git commit`, wait for the user's review and manual consent
+When writing code comments or documentation, be concise - every word should earn its place. No redundant sentences; each should register a new concept.
 
-When writing to a *.md Markdown file, be concise:
-- If an idea can be expressed in one sentence, do so
-- Avoid duplication of concept expression. Each sentence should cleanly register a new concept in the reader's brain.
+Any code comments should be written for a developer with zero prior context on the codebase. Explaining 'why' is more important than 'what' - the code should be self-documenting.
+
+Never commit code that logs sensitive details (credential tokens, RPC URLs, etc.) - mask them if they must appear in output. Temporary unmasked logging for local debugging is acceptable if reverted before committing.
+
+All bash scripts must start with `set -euo pipefail`.
 
 Do not write with emdash `—`, write with regular dash `-` instead
 
@@ -81,6 +81,12 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+## 5. Error Handling
+
+- Fail fast with clear, actionable messages
+- Never swallow exceptions silently
+- Include context (what operation, what input, suggested fix)
 
 ---
 
