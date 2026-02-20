@@ -6,7 +6,11 @@ If anything about the user's request is unclear, interview me relentlessly and v
 
 Always include unit tests (with /test-driven-development and /unit-test in mind) when implementing new methods, functions, or any code changes. Do not consider a task complete until tests are written and passing.
 
-If an environment variable is added or removed, update the corresponding .env.sample file in the same project to match.
+If an environment variable is added or removed, update the corresponding .env.* template files in the same project to match.
+
+Use shared const enums or constant objects instead of raw string literals when introducing new string values. Never scatter raw strings across files.
+
+When writing explanatory code comments, write them for a developer with zero prior context on the codebase. Be explicit about the 'why', not just the 'what'.
 
 When installing new dependencies, pin exact versions. Do NOT use floating versions, ranges, wildcards, or "latest".
 
