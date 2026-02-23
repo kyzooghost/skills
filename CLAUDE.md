@@ -87,7 +87,3 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Fail fast with clear, actionable messages
 - Never swallow exceptions silently
 - Include context (what operation, what input, suggested fix)
-
----
-
-**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
