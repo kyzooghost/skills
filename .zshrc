@@ -68,7 +68,8 @@ gwa() {
 
 
   echo "Creating worktree at: $wt_path"
-  git worktree add -b "$branch" "$wt_path" "origin/$branch"
+  git worktree add -b "$branch" "$wt_path" "origin/$branch" || return 1
+  cd "$wt_path"
 }
 
 # Delete git worktree
@@ -105,6 +106,40 @@ gwipe() {
   fi
 
   echo "✅ Done"
+}
+
+# Delete current worktree and cd back to main repo
+gwipehere() {
+  local wt_path
+  wt_path="$(pwd)"
+
+  local main_path
+  main_path=$(git worktree list --porcelain | head -1 | sed 's/^worktree //')
+
+  if [[ "$wt_path" == "$main_path" ]]; then
+    echo "Error: already in the main worktree"
+    return 1
+  fi
+
+  local branch
+  branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+
+  cd "$main_path" || return 1
+
+  echo "Removing worktree: $wt_path"
+  git worktree remove "$wt_path" --force || return 1
+
+  if [[ -d "$wt_path" ]]; then
+    echo "Deleting folder: $wt_path"
+    command rm -rf "$wt_path"
+  fi
+
+  if [[ -n "$branch" ]]; then
+    echo "Deleting branch: $branch"
+    git branch -D "$branch"
+  fi
+
+  echo "Done. Back in: $(pwd)"
 }
 
 incognito() {
