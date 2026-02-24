@@ -51,7 +51,7 @@ This manifest drives the doc search in Step 3.
 
 Determine target doc files:
 - If `$ARGUMENTS` is non-empty: use those paths. Expand directories to find `*.md` files within them.
-- If `$ARGUMENTS` is empty: glob for all `*.md` in the repo, excluding `.git/`, `node_modules/`, `dist/`, `build/`, `.next/`, `out/`.
+- If `$ARGUMENTS` is empty: Use the Glob tool with pattern `**/*.md`, then filter out paths containing `.git/`, `node_modules/`, `dist/`, `build/`, `.next/`, or `out/` directory segments.
 
 If no `*.md` files are found: stop with "No documentation files found in the specified paths."
 
@@ -67,6 +67,7 @@ Output: a targeted list of `(doc_file, section, changed_item, relevance)` tuples
 
 For each `(doc_file, section)` from Step 3:
 1. Read the doc section with surrounding context using the Read tool
+   Read from the matched heading to the next heading of equal or higher level. Include a few lines above the heading for context.
 2. Compare against the diff changes
 3. Classify drift type:
    - **CONTRADICTION** (HIGH): Doc states X, code now does Y
@@ -127,7 +128,8 @@ Then ask: "Would you like to commit these documentation updates?"
 
 **If user approves:**
 1. Stage the modified doc files: `git add {files}`
-2. Commit with message: `docs: update documentation to match code changes`
+2. Commit with message: `docs: fix {N} doc drift issues ({list of drift types found})`
+   For example: `docs: fix 3 doc drift issues (1 contradiction, 1 missing update, 1 staleness)`
 3. Do NOT auto-push
 
 **If user declines:**
@@ -143,6 +145,7 @@ Then ask: "Would you like to commit these documentation updates?"
 | No drift detected | "All documentation is up to date with current changes." |
 | `gh` CLI not available | Fall back to `git diff` silently. `gh` is optional. |
 | `git diff` fails | "Error: could not compute diff. Ensure you are on a feature branch." |
+| `$ARGUMENTS` path does not exist | "Error: path '{path}' does not exist." |
 
 ## Ground Rules
 
