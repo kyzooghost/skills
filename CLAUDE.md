@@ -22,6 +22,8 @@ All bash scripts must start with `set -euo pipefail`.
 
 Do not write with emdash `—`, write with regular dash `-` instead
 
+When you significantly course-correct during a task - wrong architecture, misunderstood pattern, missed convention - suggest that I add the lesson to CLAUDE.md. Be specific: state what you got wrong, why, and what the rule should say.
+
 # Coding Guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
