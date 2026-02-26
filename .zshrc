@@ -44,10 +44,27 @@ gnew() {
     git checkout -b "$1"
 }
 
-# Create new worktree based on a remote branch
+# Create new worktree with a fresh branch
 gwa() {
   if [ -z "$1" ]; then
-    echo "Usage: gwa <remote-branch>"
+    echo "Usage: gwa <branch-name>"
+    return 1
+  fi
+
+  local branch="$1"
+  local repo
+  repo="$(basename "$PWD")"
+  local wt_path="../${repo}--${branch}"
+
+  echo "Creating worktree at: $wt_path"
+  git worktree add -b "$branch" "$wt_path" || return 1
+  cd "$wt_path"
+}
+
+# Create new worktree based on a remote branch
+gwar() {
+  if [ -z "$1" ]; then
+    echo "Usage: gwar <remote-branch>"
     return 1
   fi
 
@@ -65,7 +82,6 @@ gwa() {
     fi
     n=$((n + 1))
   done
-
 
   echo "Creating worktree at: $wt_path"
   git worktree add -b "$branch" "$wt_path" "origin/$branch" || return 1
