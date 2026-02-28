@@ -89,3 +89,20 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Fail fast with clear, actionable messages
 - Never swallow exceptions silently
 - Include context (what operation, what input, suggested fix)
+
+# Technical Writing & Analysis
+
+When writing technical documentation or doing deep technical analysis:
+- Use EXACT values from source material - never approximate (e.g., "exactly 1 block" not "~1
+block", specific fee percentages not vague descriptions).
+- Do NOT invent steps, mechanisms, or details not in the source.
+- Flag uncertain claims with [NEEDS VERIFICATION] rather than guessing.
+- For protocol/contract descriptions, cite the specific file and line.
+
+## Mermaid Diagrams
+
+When creating Mermaid diagrams:
+- Never split a single statement across multiple lines. Each diagram statement (e.g., `A->>B:
+message`) must be on one line.
+- Validate syntax mentally before presenting - watch for stray `end` keywords, unclosed blocks,
+and incorrect nesting.
