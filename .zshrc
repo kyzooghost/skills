@@ -6,7 +6,8 @@ git config --global push.autoSetupRemote true
 
 alias k=kubectl
 alias v=vim
-alias claude-y="claude --dangerously-skip-permissions"
+alias c="claude --dangerously-skip-permissions"
+alias co="codex -a never -s workspace-write"
 
 rep() {
   cd ~/Desktop/repos
