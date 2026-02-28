@@ -20,6 +20,16 @@ set-zshrc() {
     code ~/.zshrc
 }
 
+grid4() {
+  local name="${1:-grid}"
+
+  tmux new-session -d -s "$name" \; \
+    split-window -h \; \
+    select-pane -t 0 \; split-window -v \; \
+    select-pane -t 1 \; split-window -v \; \
+    select-layout tiled \; \
+    attach
+
 gpp() {
     git pull --prune
 }
