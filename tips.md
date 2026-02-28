@@ -1,6 +1,8 @@
 
 Starship for zsh shell extension - https://starship.rs/
 
+Install git-delta - https://github.com/dandavison/delta
+
 https://github.com/trailofbits/claude-code-config
 
 https://github.com/kenryu42/claude-code-safety-net
