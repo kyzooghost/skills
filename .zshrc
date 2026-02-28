@@ -21,6 +21,10 @@ set-zshrc() {
     code ~/.zshrc
 }
 
+set-tmux() {
+    code ~/.tmux.conf
+}
+
 grid4() {
   local name="${1:-grid}"
 
