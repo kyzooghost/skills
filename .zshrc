@@ -35,6 +35,7 @@ grid4() {
     select-pane -t 1 \; split-window -v \; \
     select-layout tiled \; \
     attach
+}
 
 gpp() {
     git pull --prune
