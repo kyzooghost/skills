@@ -7,7 +7,8 @@ git config --global push.autoSetupRemote true
 alias k=kubectl
 alias v=vim
 alias c="claude --dangerously-skip-permissions"
-alias co='codex -a never -s workspace-write --add-dir "$(pwd)" --add-dir "$(pwd)/.agents"'
+alias co="codex -a never -s danger-full-access"
+alias cos='codex -a never -s workspace-write --add-dir "$(pwd)" --add-dir "$(pwd)/.agents"'
 
 rep() {
   cd ~/Desktop/repos
