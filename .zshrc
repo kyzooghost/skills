@@ -7,7 +7,7 @@ git config --global push.autoSetupRemote true
 alias k=kubectl
 alias v=vim
 alias c="claude --dangerously-skip-permissions"
-alias co="codex -a never -s workspace-write"
+alias co='codex -a never -s workspace-write --add-dir "$(pwd)"'
 
 rep() {
   cd ~/Desktop/repos
