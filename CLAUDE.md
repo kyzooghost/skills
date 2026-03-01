@@ -106,3 +106,7 @@ When creating Mermaid diagrams:
 message`) must be on one line.
 - Validate syntax mentally before presenting - watch for stray `end` keywords, unclosed blocks,
 and incorrect nesting.
+
+## Tables
+
+When writing tables, provide both ASCII (plain text) and Markdown formats so the output is copy-pasteable into any tool.
