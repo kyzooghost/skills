@@ -26,6 +26,10 @@ set-tmux() {
     code ~/.tmux.conf
 }
 
+tmux-reload() {
+    tmux source-file ~/.tmux.conf
+}
+
 grid4() {
   local name="${1:-grid}"
 
