@@ -6,6 +6,7 @@
 - Weak matchers for element presence
 - Testing implementation details
 - Over-mocking
+- Mocking data/value objects
 
 ## Code Coverage Without Assertions
 
@@ -130,4 +131,48 @@ it('saves user to database', async () => {
   const saved = await db.findByName('Test');
   expect(saved).toEqual({ id: expect.any(Number), name: 'Test' });
 });
+```
+
+## Mocking Data/Value Objects
+
+Never mock simple data classes, value objects, or DTOs. Use real instances via constructors or builders.
+
+**Anti-pattern:**
+
+```java
+CodeDelegation delegation = mock(CodeDelegation.class);
+when(delegation.authorizer()).thenReturn(Optional.of(address));
+when(delegation.address()).thenReturn(target);
+```
+
+**Correct:**
+
+```java
+CodeDelegation delegation = CodeDelegation.builder()
+    .chainId(chainId)
+    .address(target)
+    .nonce(0)
+    .signAndBuild(keyPair); // authorizer() derived from signer
+```
+
+**Why this matters:**
+
+- Mocked value objects can return impossible combinations (e.g., values that violate invariants)
+- Tests pass with mocks but fail with real objects, hiding bugs
+- If production code uses `Foo.builder()`, tests should too
+
+**When setup is complex:**
+
+If creating real instances requires setup (signing, encryption, external state), create shared test utilities rather than mocking:
+
+```java
+// Create a test helper instead of mocking
+private CodeDelegation createTestDelegation(Address authority, Address target) {
+  KeyPair keyPair = getOrCreateKeyPairFor(authority);
+  return CodeDelegation.builder()
+      .chainId(TEST_CHAIN_ID)
+      .address(target)
+      .nonce(0)
+      .signAndBuild(keyPair);
+}
 ```
