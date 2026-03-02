@@ -20,6 +20,8 @@ Never commit code that logs sensitive details (credential tokens, RPC URLs, etc.
 
 All bash scripts must start with `set -euo pipefail`.
 
+Java/Kotlin: Use imports instead of fully qualified class names (e.g., `Response<String>` not `org.web3j.protocol.core.Response<String>`).
+
 Do not write with emdash `—`, write with regular dash `-` instead
 
 When you significantly course-correct during a task - wrong architecture, misunderstood pattern, missed convention - suggest that I add the lesson to CLAUDE.md. Be specific: state what you got wrong, why, and what the rule should say.
