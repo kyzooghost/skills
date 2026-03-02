@@ -9,6 +9,7 @@
 - Avoid duplicated or polluted tests
 - Shared test utilities across files
 - Mock only when necessary
+- Protocol/specification edge cases
 - Parameterized tests
 - Given / When / Then comments
 
@@ -174,6 +175,24 @@ Only mock when calling the real implementation is not feasible.
 ```ts
 jest.mock('api'); // mock only when calling real API is not feasible
 ```
+
+## Protocol/Specification Edge Cases
+
+When writing tests for code governed by a protocol or specification (e.g., EIP-7702, RFCs, blockchain consensus rules):
+
+**Ask before assuming edge cases are valid.**
+
+If you're unsure whether a scenario can actually occur:
+- Ask the user: "Is [scenario] a valid case per the spec?"
+- Don't write tests for edge cases you haven't verified
+- Empty lists, zero values, and Optional.empty() on derived fields are common red flags
+
+**Examples of questions to ask:**
+- "Can the authorization list be empty in an EIP-7702 transaction?"
+- "Is it valid to have a nonce of 0 here, or must it be > 0?"
+- "Can this field return Optional.empty() in practice, or is it always present?"
+
+**Never assume** a test scenario is valid just because the code compiles or the mock allows it.
 
 ## Parameterized Tests
 
