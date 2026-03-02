@@ -84,11 +84,37 @@ expect(screen.getByText('Welcome')).toBeOnTheScreen();
 
 ## Avoid Duplicated or Polluted Tests
 
-Define shared mocks once, not in every test.
+Apply DRY to test infrastructure, not just production code.
+
+**Share setup:**
 
 ```ts
 beforeEach(() => mockReset());
 ```
+
+**Share assertion helpers** when verification logic repeats across tests:
+
+```java
+// Before: repeated in 5 tests
+assertThat(result).isPresent();
+assertThat(result.get()).isEqualTo(expectedMessage);
+
+// After: extract helper
+private void assertDeniedWith(String expectedMessage) {
+  Optional<String> result = validator.validateTransaction(transaction, false, false);
+  assertThat(result).isPresent();
+  assertThat(result.get()).isEqualTo(expectedMessage);
+}
+```
+
+**When to extract:**
+- Same assertion sequence appears 3+ times
+- Verification involves multiple chained assertions
+- Domain-specific validation (e.g., "is denied", "is valid", "contains error")
+
+**When NOT to extract:**
+- Single assertions (`assertThat(x).isTrue()`)
+- Helper would hide what's being tested
 
 ## Mock Only When Necessary
 
