@@ -5,6 +5,7 @@
 - Code coverage without assertions
 - Weak matchers for element presence
 - Testing implementation details
+- Testing internal ordering/precedence
 - Over-mocking
 - Mocking data/value objects
 
@@ -92,6 +93,40 @@ it('shows loading indicator during action', () => {
   expect(screen.getByText('Loading...')).toBeOnTheScreen();
 });
 ```
+
+## Testing Internal Ordering/Precedence
+
+Don't test the order in which internal checks happen unless it's a documented requirement.
+
+**Anti-pattern:**
+
+```java
+@Test
+void senderDenialTakesPrecedenceOverAuthorizationDenial() {
+  // Tests that sender is checked before authorization
+  // But does anyone care about this order?
+}
+
+@Test
+void deniedAuthorityBeforeAddress() {
+  // Tests authority checked before address
+  // Will break if someone reorders the checks during refactoring
+}
+```
+
+**Ask yourself:**
+- "Does the caller/user care which check fails first?"
+- "If I reorder these checks, does the observable behavior change?"
+- "Will this test break during refactoring without any behavior change?"
+
+If the answer is "no, no, yes" - don't write the test.
+
+**When ordering DOES matter:**
+- Short-circuit for performance (expensive check should come last)
+- Security requirements (auth check must happen before data access)
+- Documented API contract ("returns first validation error encountered")
+
+If ordering matters, document WHY in the test name or comment.
 
 ## Over-Mocking
 
