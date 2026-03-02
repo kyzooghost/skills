@@ -7,6 +7,7 @@
 - One behavior per test
 - Focused assertions
 - Avoid duplicated or polluted tests
+- Shared test utilities across files
 - Mock only when necessary
 - Parameterized tests
 - Given / When / Then comments
@@ -115,6 +116,56 @@ private void assertDeniedWith(String expectedMessage) {
 **When NOT to extract:**
 - Single assertions (`assertThat(x).isTrue()`)
 - Helper would hide what's being tested
+
+## Shared Test Utilities Across Files
+
+When similar test setup appears in multiple test files, extract to a shared utility class.
+
+**Before (duplicated in 2 test files):**
+
+```java
+// DeniedAddressValidatorTest.java
+private static final KeyPair DENIED_KEY_PAIR = SIGNATURE_ALGORITHM.createKeyPair(...);
+private CodeDelegation createCodeDelegation(KeyPair keyPair, Address target) {
+  return CodeDelegation.builder().chainId(CHAIN_ID).address(target).nonce(0).signAndBuild(keyPair);
+}
+
+// AllowedAddressTransactionSelectorTest.java
+private static final KeyPair SENDER_KEY_PAIR = SIGNATURE_ALGORITHM.createKeyPair(...);
+private CodeDelegation createDelegation(KeyPair keyPair, Address target) {
+  return CodeDelegation.builder().chainId(CHAIN_ID).address(target).nonce(0).signAndBuild(keyPair);
+}
+```
+
+**After (shared utility):**
+
+```java
+// EIP7702TestUtils.java
+public final class EIP7702TestUtils {
+  public static KeyPair createKeyPair(String privateKeyHex) { ... }
+  public static CodeDelegation createCodeDelegation(KeyPair keyPair, Address target) { ... }
+  public static Transaction createDelegateCodeTransaction(KeyPair sender, Address recipient, List<CodeDelegation> delegations) { ... }
+}
+
+// Both test files now use:
+import static com.example.utils.EIP7702TestUtils.*;
+final CodeDelegation delegation = createCodeDelegation(SENDER_KEY_PAIR, target);
+```
+
+**When to extract to shared utility:**
+- Same fixture builder/factory needed in 2+ test files
+- Complex object creation that requires domain knowledge
+- Setup involves signing, encryption, or other non-trivial initialization
+
+**Before writing test fixtures:**
+1. Search for existing `*TestUtils`, `*TestFactory`, or `*TestFixtures` classes
+2. Check if production code has builders - tests should use them too
+3. If creating new utilities, place in a `utils` or `fixtures` package alongside tests
+
+**Naming conventions:**
+- `{Domain}TestUtils` - Static utility methods (e.g., `EIP7702TestUtils`)
+- `{Domain}TestFactory` - Stateful factory with nonce tracking (e.g., `TestTransactionFactory`)
+- `{Domain}Fixtures` - Pre-built test data constants
 
 ## Mock Only When Necessary
 

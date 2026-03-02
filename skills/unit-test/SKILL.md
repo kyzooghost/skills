@@ -109,6 +109,8 @@ Before submitting a PR with tests:
 - [ ] No reliance on global state or implementation details
 - [ ] Time/randomness mocked where needed
 - [ ] Proper matchers used for assertions
+- [ ] Checked for existing `*TestUtils`/`*TestFactory` classes before creating new fixtures
+- [ ] Extracted shared fixtures to utility class if same setup needed in 2+ test files
 - [ ] All tests pass locally
 
 ## Resources
