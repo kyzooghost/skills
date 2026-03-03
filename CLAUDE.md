@@ -82,7 +82,15 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## 5. Error Handling
+## 5. Subagent Strategy
+
+**Use subagents liberally to keep the main context window clean.**
+
+- Offload research, exploration, and parallel analysis to subagents.
+- For complex problems, throw more compute at it via subagents.
+- One task per subagent for focused execution.
+
+## 6. Error Handling
 
 - Fail fast with clear, actionable messages
 - Never swallow exceptions silently
