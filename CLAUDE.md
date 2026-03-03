@@ -22,7 +22,7 @@ Java/Kotlin: Use imports instead of fully qualified class names (e.g., `Response
 
 Do not write with emdash `—`, write with regular dash `-` instead
 
-When you significantly course-correct during a task - wrong architecture, misunderstood pattern, missed convention - suggest that I add the lesson to CLAUDE.md. Be specific: state what you got wrong, why, and what the rule should say.
+When corrected or when you catch your own mistake, write the lesson to memory/lessons.md. State what went wrong, why, and the rule to prevent it. Review lessons.md at session start and ruthlessly iterate until the mistake rate drops.
 
 # Coding Guidelines
 
