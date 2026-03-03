@@ -2,7 +2,7 @@
 
 # Strict Rules
 
-If anything about the user's request is unclear, interview me relentlessly and very in-depth using the AskUserQuestionTool about literally anything: technical implementation, system design, bottlenecks, UX, concerns, tradeoffs, etc. 
+If anything about the user's request is unclear, ask relentlessly - intent, technical implementation, system design, tradeoffs, UX, all of it.
 
 Always include unit tests (with /test-driven-development and /unit-test in mind) when implementing new methods, functions, or any code changes. Do not consider a task complete until tests are written and passing.
 
@@ -12,11 +12,9 @@ Use shared const enums or constant objects instead of raw string literals when i
 
 When installing new dependencies, pin exact versions. Do NOT use floating versions, ranges, wildcards, or "latest".
 
-When writing code comments or documentation, be concise - every word should earn its place. No redundant sentences; each should register a new concept.
+Code should be self-documenting for 'what'. Comments explain 'why' - decisions, constraints, non-obvious reasons - written for a developer with zero prior context. Be concise; every word should earn its place.
 
-Any code comments should be written for a developer with zero prior context on the codebase. Explaining 'why' is more important than 'what' - the code should be self-documenting.
-
-Never commit code that logs sensitive details (credential tokens, RPC URLs, etc.) - mask them if they must appear in output. Temporary unmasked logging for local debugging is acceptable if reverted before committing.
+Never commit code that logs sensitive details (credential tokens, RPC URLs, etc.) - mask them if they must appear in output. Unmasked logging for local debugging is acceptable if reverted before committing.
 
 All bash scripts must start with `set -euo pipefail`.
 
@@ -38,7 +36,6 @@ Before implementing:
 - State your assumptions explicitly. If uncertain, ask.
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
 
 ## 2. Simplicity First
 
@@ -64,7 +61,6 @@ When editing existing code:
 
 When your changes create orphans:
 - Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
 
 The test: Every changed line should trace directly to the user's request.
 
@@ -95,8 +91,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 # Technical Writing & Analysis
 
 When writing technical documentation or doing deep technical analysis:
-- Use EXACT values from source material - never approximate (e.g., "exactly 1 block" not "~1
-block", specific fee percentages not vague descriptions).
+- Use EXACT values from source material - never approximate (e.g., "exactly 1 block" not "~1 block").
 - Do NOT invent steps, mechanisms, or details not in the source.
 - Flag uncertain claims with [NEEDS VERIFICATION] rather than guessing.
 - For protocol/contract descriptions, cite the specific file and line.
