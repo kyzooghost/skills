@@ -1,5 +1,11 @@
 # CLAUDE.md
 
+# Shell commands
+
+Use `rtk` wrappers by default for shell commands to reduce output tokens.
+Do not run `rtk init*`
+If `rtk` has no equivalent or output is too compressed, run raw command or `rtk proxy <cmd>`
+
 # Strict Rules
 
 If anything about the user's request is unclear, ask relentlessly - intent, technical implementation, system design, tradeoffs, UX, all of it.
