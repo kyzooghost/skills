@@ -6,6 +6,7 @@
 - Weak matchers for element presence
 - Testing implementation details
 - Testing internal ordering/precedence
+- Testing static content
 - Over-mocking
 - Mocking data/value objects
 
@@ -127,6 +128,40 @@ If the answer is "no, no, yes" - don't write the test.
 - Documented API contract ("returns first validation error encountered")
 
 If ordering matters, document WHY in the test name or comment.
+
+## Testing Static Content
+
+Don't write tests that verify static files (prompts, config, markdown) contain certain strings. If changing wording doesn't change behavior, no test should break.
+
+**Anti-pattern:**
+
+```ts
+it('prompt contains required sections', () => {
+  const prompt = readFileSync('prompts/system.md', 'utf-8');
+
+  expect(prompt).toContain('CONTEXT');
+  expect(prompt).toContain('Required section');
+});
+```
+
+**Why this is wrong:**
+
+- Rewriting content for clarity breaks tests with no behavior change
+- Tests verify content exists, not that it works
+- This is testing "did I save the file correctly" not "does the system behave correctly"
+
+**Correct approach:**
+
+Test the system that *uses* the content, not the content itself:
+
+```ts
+it('AI client returns valid assessment', async () => {
+  const result = await aiClient.analyzeProposal(testProposal);
+
+  expect(result.riskScore).toBeGreaterThanOrEqual(0);
+  expect(result.riskScore).toBeLessThanOrEqual(100);
+});
+```
 
 ## Over-Mocking
 
