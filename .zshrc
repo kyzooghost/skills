@@ -75,7 +75,9 @@ gwa() {
   local branch="$1"
   local repo
   repo="$(basename "$PWD")"
-  local wt_path="../${repo}--${branch}"
+  # Replace slashes so branch names like fix/foo do not create nested folders.
+  local path_branch="${branch//\//-}"
+  local wt_path="../${repo}--${path_branch}"
 
   echo "Creating worktree at: $wt_path"
   git worktree add -b "$branch" "$wt_path" || return 1
