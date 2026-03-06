@@ -10,7 +10,7 @@ If `rtk` has no equivalent or output is too compressed, run raw command or `rtk 
 
 If anything about the user's request is unclear, ask relentlessly - intent, technical implementation, system design, tradeoffs, UX, all of it.
 
-Always include unit tests (with /test-driven-development and /unit-test in mind) when implementing new methods, functions, or any code changes. Do not consider a task complete until tests are written and passing.
+When writing unit tests, ensure they comply with /unit-test.
 
 If an environment variable is added or removed, update the corresponding .env.* template files in the same project to match.
 
@@ -33,6 +33,14 @@ When corrected or when you catch your own mistake, write the lesson to memory/le
 # Coding Guidelines
 
 **Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
+
+## 0. Match Local Conventions First
+
+**Before writing any implementation, examine 2-3 sibling files in the target directory.**
+
+If local patterns conflict with rules in this file or in skills, **local patterns win**. Your code should look like it belongs next to its neighbors.
+
+Check: Do similar files have unit tests? What's the naming convention? How are utilities structured?
 
 ## 1. Think Before Coding
 
