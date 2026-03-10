@@ -28,7 +28,10 @@ Java/Kotlin: Use imports instead of fully qualified class names (e.g., `Response
 
 Do not write with emdash `—`, write with regular dash `-` instead
 
-When corrected or when you catch your own mistake, write the lesson to memory/lessons.md. State what went wrong, why, and the rule to prevent it. Review lessons.md at session start and ruthlessly iterate until the mistake rate drops.
+When corrected, after making a mistake or misinterpreting an instruction, write to ~/.claude/lessons.md:
+- Organize by git remote (`git remote get-url origin`)
+- Document under current repo: what went wrong, why, prevention rule
+- At session start, review only current remote's section
 
 # Coding Guidelines
 
