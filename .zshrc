@@ -79,8 +79,10 @@ gwa() {
   local path_branch="${branch//\//-}"
   local wt_path="../${repo}--${path_branch}"
 
+  git fetch origin main || return 1
+
   echo "Creating worktree at: $wt_path"
-  git worktree add -b "$branch" "$wt_path" || return 1
+  git worktree add -b "$branch" "$wt_path" origin/main || return 1
   cd "$wt_path"
 }
 
