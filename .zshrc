@@ -31,7 +31,9 @@ tmux-reload() {
 }
 
 grid4() {
-  local name="${1:-grid}"
+  local random_id
+  random_id=$(printf '%04x%04x' "$RANDOM" "$RANDOM")
+  local name="${1:-grid-$random_id}"
 
   tmux new-session -d -s "$name" \; \
     split-window -h \; \
