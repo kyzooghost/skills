@@ -18,7 +18,9 @@ This command triages unresolved bot review comments on a GitHub PR - assessing v
 4. For each bot comment, reads the referenced source code and assesses whether the concern is valid
 5. Presents a consolidated report with verdicts and proposed fixes
 6. Asks the user per-comment whether to apply fixes (valid), dismiss comments (invalid), or decide (uncertain)
-7. Reports which files were modified at the end
+7. For each applied fix: commits the specific changed files, replies to the thread with a fix explanation and commit link, and resolves the thread
+8. After all actions: pushes to remote once
+9. Reports a final summary
 
 ## Step 1: Repo Resolution
 
@@ -87,7 +89,14 @@ Present a consolidated summary. For each comment, show:
 
 After presenting the report, go through each comment and ask the user what to do:
 
-- **Valid comments**: Ask "Apply this fix?" If yes, edit the file with the proposed fix using the Edit tool. Do NOT commit - leave changes unstaged.
+- **Valid comments**: Ask "Apply this fix?" If yes:
+  1. Edit the file(s) with the proposed fix using the Edit tool
+  2. Stage only the specific files modified for this fix with `git add <files>` - do NOT use `git add .` since other concurrent changes may exist in the repo
+  3. Commit with message: `fix: address {bot-name} feedback in {file}` (scoped to only the files changed for this comment)
+  4. Capture the commit SHA from the output
+  5. Reply to the review thread via `gh api` with a brief explanation of what was fixed and a link to the commit (`https://github.com/{owner}/{repo}/commit/{sha}`)
+  6. Resolve the thread using the GraphQL `resolveReviewThread` mutation (same mechanism as for invalid comments below)
+  - For issue comments (no thread to resolve): reply via `gh api` with the same fix explanation and commit link
 - **Invalid comments**: Ask "Dismiss this comment on the PR?" If yes:
   - For review comments: reply to the thread via `gh api` with a brief dismissal message explaining why the concern does not apply, then **resolve the thread** using the GraphQL `resolveReviewThread` mutation. To resolve, you need the thread's GraphQL node ID - fetch it from the review threads query (the `id` field on the thread node, not the comment's `databaseId`). Example mutation:
     ```
@@ -96,10 +105,21 @@ After presenting the report, go through each comment and ask the user what to do
   - For issue comments: reply via `gh api` with the same dismissal message (issue comments cannot be resolved)
 - **Uncertain comments**: Ask the user whether to treat as valid or invalid, then proceed accordingly
 
+## Step 6: Push
+
+If any commits were created during Step 5, push to the remote once:
+```
+git push
+```
+If push fails, report the error and suggest the user push manually - do not undo the local commits.
+
+## Step 7: Summary
+
 At the end, report:
-- Which files were modified (if any)
+- Which commits were created (SHA + message) for each fix
 - Which comments were dismissed (if any)
 - Any comments the user skipped
+- Whether the push succeeded or failed
 
 ## Error Handling
 
@@ -107,9 +127,10 @@ At the end, report:
 - `gh` CLI not installed or not authenticated: stop with "Error: `gh` CLI is not available or not authenticated. Run `gh auth login` first."
 - PR not found (404): stop with "Error: PR #{PR_NUMBER} not found in {owner}/{repo}."
 - File referenced by a comment does not exist locally: flag in the report as "File not found locally - skipping fix" and continue with the next comment
+- `git push` fails: report the error with a suggestion to push manually, but do not undo local commits
 
 ## Important Notes
 
-- This command never auto-commits. All file edits are left for the user to review and commit.
+- Each applied fix is committed individually (scoped to only the files changed for that fix) to avoid interfering with other concurrent changes in the repo. All commits are pushed once at the end.
 - Only bot comments are processed. Human review comments are ignored.
 - The assessment uses the current local source code, not the PR diff - ensure your branch is up to date.
