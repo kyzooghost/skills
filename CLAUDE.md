@@ -30,7 +30,7 @@ Do not write with emdash `—`, write with regular dash `-` instead
 
 When corrected, after making a mistake or misinterpreting an instruction, write to ~/.claude/lessons.md:
 - Organize by git remote (`git remote get-url origin`)
-- Per lesson: half-to-one-line summary header, then what went wrong, why, prevention rule
+- Per lesson: half-to-one-line summary header, then what went wrong, why, prevention rule as separate sections
 - At session start, review only current remote's section
 
 # Coding Guidelines
