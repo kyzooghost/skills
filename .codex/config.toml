@@ -1,0 +1,5 @@
+# Codex CLI configuration
+# https://developers.openai.com/codex/config-reference
+
+# OS notification when agent finishes a turn
+notify = ["osascript", "-e", "display notification \"Codex has finished\" with title \"Codex CLI\""]
