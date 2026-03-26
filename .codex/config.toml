@@ -3,3 +3,19 @@
 
 # OS notification when agent finishes a turn
 notify = ["osascript", "-e", "display notification \"Codex has finished\" with title \"Codex CLI\""]
+sandbox_mode = "danger-full-access"
+approval_policy = "on-request"
+
+# Disable commit attribution
+commit_attribution = ""
+
+# Turn off metrics collection and exfiltration
+[analytics]
+enabled = false
+
+[features]
+# Prevent machine from sleeping during active turn
+prevent_idle_sleep = true
+
+[agents]
+max_threads = 10
