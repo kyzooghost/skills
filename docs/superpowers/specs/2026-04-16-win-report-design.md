@@ -2,13 +2,13 @@
 
 ## Overview
 
-A skill that discovers and synthesizes engineering wins from GitHub PRs and issues over a configurable time range, producing a structured markdown report.
+A skill that discovers and synthesizes engineering wins from multiple artifact sources (GitHub, Confluence, Slack, etc.) over a configurable time range, producing a structured markdown report.
 
 ## Decisions
 
 - **Single SKILL.md** - no references/ or scripts/ split. Content compresses to ~300-400 lines.
-- **gh CLI only** - no local git log. Richer PR metadata, review context, labels.
-- **No hardcoded identifying info** - username resolved at runtime via `gh api /user`, repos provided by user.
+- **Multi-source discovery** - GitHub (gh CLI), Confluence (Atlassian MCP), Slack MCP, plus user-pasted content. Sources detected and confirmed with user before discovery begins.
+- **No hardcoded identifying info** - username resolved at runtime via `gh api /user`, repos and other sources provided by user.
 - **Configurable date range** - defaults to last 30 days, accepts custom dates as args.
 - **Output to file** - writes `wins-YYYY-MM.md` in current directory.
 
@@ -22,19 +22,45 @@ A skill that discovers and synthesizes engineering wins from GitHub PRs and issu
 
 ### Setup (before phases)
 
-1. Resolve GitHub username via `gh api /user --jq '.login'`. If unauthenticated, instruct `gh auth login`.
-2. In a single consolidated prompt, ask the user for:
-   - GitHub repos to search (accept `owner/repo` or full URLs, parse to `owner/repo`)
+1. **Parse date range** from args or default to last 30 days.
+
+2. **Detect available artifact sources** by probing the environment:
+   - **GitHub:** Run `gh api /user --jq '.login'`. If authenticated, GitHub is available. If not, note as unavailable (suggest `gh auth login`).
+   - **Confluence:** Check if Atlassian MCP tools are available (e.g. `mcp__atlassian__search`). If present, Confluence is available.
+   - **Slack:** Check if Slack MCP tools are available. If present, Slack is available.
+   - **Jira:** Check if Atlassian MCP tools include Jira search (`mcp__atlassian__searchJiraIssuesUsingJql`). If present, Jira is available.
+
+3. **Present artifact sources to user for confirmation.** List all detected sources with their status (available/unavailable), then ask:
+   - Which sources to use (default: all available)
+   - For GitHub: which repos to search (accept `owner/repo` or full URLs)
+   - For Confluence: which spaces or search terms to scope to (optional)
+   - For Jira: which projects or JQL filters to scope to (optional)
+   - For Slack: which channels or search terms (optional)
+   - Whether they want to add any other sources (e.g. paste design docs, incident reports, dashboards)
    - Optional hints (remembered wins, projects, launches, incidents)
-3. Parse date range from args or default to last 30 days.
+
+   This is a single consolidated prompt - not multiple rounds.
 
 ### Phase 0 - Artifact Discovery
 
-Use gh CLI to fetch:
+Search all confirmed sources in parallel where possible.
+
+**GitHub** (if enabled):
 - PRs authored: `gh pr list --repo {repo} --author {username} --state merged --search "merged:>{start_date}" --limit 100 --json number,title,body,mergedAt,additions,deletions,labels,url`
 - Issues assigned: `gh issue list --repo {repo} --assignee {username} --state all --search "created:>{start_date}" --limit 50 --json number,title,body,state,createdAt,url`
+- Run in parallel across all repos.
 
-Run these in parallel across all repos.
+**Confluence** (if enabled):
+- Use `mcp__atlassian__search` or `mcp__atlassian__searchConfluenceUsingCql` to find pages authored/edited by the user in the date range, scoped to specified spaces.
+
+**Jira** (if enabled):
+- Use `mcp__atlassian__searchJiraIssuesUsingJql` with JQL like `assignee = currentUser() AND updated >= "{start_date}"` scoped to specified projects.
+
+**Slack** (if enabled):
+- Search for messages from the user in specified channels within the date range.
+
+**User-pasted content:**
+- Incorporate any design docs, incident reports, dashboards, or other artifacts the user provided during setup.
 
 Extract candidate signals looking for:
 - Large/complex diffs, architectural changes, security fixes, performance improvements
