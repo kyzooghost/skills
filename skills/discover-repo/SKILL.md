@@ -57,6 +57,10 @@ Report in clean markdown:
 
 5. KEY ABSTRACTIONS - Core types, traits/interfaces, data structures. Name, file, one-line description.
 
+6. IF APPLICABLE (include only if found):
+   - API routes/endpoints table (HTTP, RPC, WebSocket) with method, path, handler, description
+   - Wire protocol or message types table (tags, payload types, directions)
+
 Cite exact file paths and line numbers. Focus on architecture, not implementation details.
 Flag anything uncertain with [NEEDS VERIFICATION].
 ```
@@ -76,6 +80,10 @@ Report in clean markdown:
 4. PROTOCOL/DOMAIN CONTEXT - If domain-specific: terminology, external system interactions.
 
 5. NOTEWORTHY COMMENTS - Significant code comments explaining architectural decisions (grep for TODO, HACK, NOTE, IMPORTANT, SAFETY, INVARIANT).
+
+6. CROSS-REPO CONTEXT (if applicable) - How this repo relates to sibling repos, external services, or a broader system. Import/dependency relationships with other repos.
+
+7. HARD-WON RULES (if applicable) - Look for lessons-learned files, "do not" comments, removed-code notes, or operational rules embedded in docs/comments. These encode negative knowledge (what NOT to do).
 
 Cite exact file paths. Prefer direct quotes over paraphrasing.
 Flag anything uncertain with [NEEDS VERIFICATION].
@@ -113,8 +121,13 @@ Report in clean markdown:
 3. DEPENDENCIES - Top 10-15 most important dependencies and their purpose.
 
 4. DEPLOYMENT - Dockerfile, docker-compose, K8s manifests. Deployment targets.
+   - If multiple deployment targets exist, list them in a table: environment name, config location, notes.
+   - If Docker services have dependencies or startup order, note them.
 
 5. PREREQUISITES - What needs to be installed to develop on this project?
+
+6. IF APPLICABLE (include only if found):
+   - Deployed addresses or network registries (blockchain projects)
 
 Cite exact file paths. Include actual command examples from the repo's tooling.
 Flag anything uncertain with [NEEDS VERIFICATION].

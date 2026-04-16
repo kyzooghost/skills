@@ -147,14 +147,17 @@ command2   # description
 
 ## 7+ Additional Sections (as warranted)
 
-{Include any of these if relevant:}
+{Include any of these if relevant - only add sections that have real content:}
 
-- **Deployment Targets** - table of environments
+- **Deployment Targets** - table of environments (name, config location, L1/network, status)
 - **Branch Strategy** - active branches and their purpose
 - **Dependency Highlights** - key deps with version and purpose
 - **Key Terminology** - domain-specific glossary
 - **Cross-Repo Dependencies** - how this repo relates to others
 - **Key Ports/URLs** - service endpoints for development
+- **API Routes / RPC Methods** - table of endpoints (method, path, handler, description)
+- **Wire Protocol / Message Types** - table of message tags, payload types, directions
+- **Lessons Learned / Hard-Won Rules** - operational rules, "do not" constraints, removed code notes
 ```
 
 ## Quality Standards
