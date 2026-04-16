@@ -192,6 +192,17 @@ Optional. Call out screenshots, adoption numbers, before-state, or metrics still
 Short bullets only.
 ```
 
+After the wins, include a summary table:
+
+```markdown
+## Summary
+
+| Win | Core Signal | Impact Proxy |
+| --- | --- | --- |
+| {Win 1 short name} | {e.g. Pioneer, risk reduction, architectural judgment} | {e.g. 4h -> 10min x 20 squads} |
+| ... | ... | ... |
+```
+
 ---
 
 ## Bonus Phase - Public artifact idea
@@ -207,10 +218,12 @@ Use an even stricter, more compressed style than the win entries.
 
 Write the full report to `wins-YYYY-MM.md` in the current working directory.
 
+The report contains only the final polished wins - no intermediate work (candidate threads, scoring, selection rationale). Those are working artifacts used during discovery and triage but excluded from the output file.
+
 Include in this order:
-1. Candidate win threads (5-8)
-2. Top 3 selected wins with short rationale for selection
-3. Final win list (full template for each)
+1. Title header: `# Win List - {Month} {Year}`
+2. Final win list (full template for each, numbered as "Win 1", "Win 2", etc.)
+3. Summary table mapping each win to its core signal and impact proxy
 4. Optional public artifact idea
 
 ---
