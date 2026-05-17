@@ -15,9 +15,10 @@ rep() {
 }
 
 anon() {
-  set +o history
   unset HISTFILE
-  history -c
+  SAVEHIST=0
+  HISTSIZE=0
+  fc -p
 }
 
 set-claude() {
