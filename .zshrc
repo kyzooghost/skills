@@ -14,6 +14,12 @@ rep() {
   cd ~/Desktop/repos
 }
 
+anon() {
+  set +o history
+  unset HISTFILE
+  history -c
+}
+
 set-claude() {
     code ~/.claude
 }
