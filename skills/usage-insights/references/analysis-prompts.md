@@ -167,6 +167,33 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Find something genuinely interesting or amusing from the session summaries.
 ```
 
+### 8. Skill Suggestions
+
+```
+Analyze this coding assistant usage data and identify repeated workflows that could become custom skills (reusable slash commands).
+
+Look for patterns where the user does the same multi-step workflow 3+ times across sessions. A good skill candidate is:
+- A workflow with consistent structure (same tools, same sequence)
+- Something triggered by a recognizable intent ("check X", "generate Y", "deploy Z")
+- Multi-step enough that automating it saves real effort
+
+Do NOT suggest skills the user already has. Check the tool/skill usage in the data to see what's already automated.
+
+RESPOND WITH ONLY A VALID JSON OBJECT:
+{
+  "skill_suggestions": [
+    {
+      "name": "Suggested skill name (kebab-case, e.g. 'preflight-check')",
+      "trigger": "When the user says or does X",
+      "what_it_automates": "2-3 sentences describing the workflow steps this skill would handle",
+      "evidence": "Which sessions/patterns show this being done manually"
+    }
+  ]
+}
+
+Include 3-5 suggestions, ordered by how much time they'd save. Be specific - reference actual patterns from the data, not generic suggestions.
+```
+
 ## At a Glance (Final Summary)
 
 Run this AFTER all other insights are generated, feeding it the combined results.

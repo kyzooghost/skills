@@ -38,6 +38,7 @@ Using the aggregated JSON as context appended after each prompt's `DATA:` marker
 5. **Suggestions** - Concrete improvements (config additions, features to try, usage patterns)
 6. **On the Horizon** - Future workflow opportunities
 7. **Fun Ending** - A memorable moment
+8. **Skill Suggestions** - Repeated workflows that could become custom skills
 
 ### Step 4: At a Glance Summary
 
@@ -84,6 +85,9 @@ Format:
 
 ### Usage Patterns to Adopt
 [usage_patterns with copyable prompts]
+
+## Skill Suggestions
+[repeated workflows that could be automated as custom skills, with name, trigger, and what it would do]
 
 ## On the Horizon
 [opportunities with copyable prompts]
