@@ -26,10 +26,9 @@ This command writes the last agent response to a local Markdown file.
 
 ## Output
 
-After writing, display:
-```
-Wrote {n} bytes to {filepath}
-```
+After writing:
+1. Display: `Wrote {n} bytes to {filepath}`
+2. Open the file in Chrome: `open -a "Google Chrome" {filepath}`
 
 ## Error Handling
 
