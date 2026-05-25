@@ -1,16 +1,17 @@
 ---
 name: discover-repo
-description: Generate a comprehensive CLAUDE.md index for a repository. Dispatches parallel subagents to study directory structure, core code, docs, tests, and config, then synthesizes findings into a structured guide for future Claude sessions. Triggers on "/discover-repo", "discover this repo", "generate a CLAUDE.md", "index this codebase", or "study this repo". Use when onboarding to a new codebase or creating documentation for AI-assisted development.
+description: Generate a comprehensive AGENTS.md index for a repository with a CLAUDE.md symlink. Dispatches parallel subagents to study directory structure, core code, docs, tests, and config, then synthesizes findings into a structured guide for future Claude sessions. Triggers on "/discover-repo", "discover this repo", "generate a CLAUDE.md", "index this codebase", or "study this repo". Use when onboarding to a new codebase or creating documentation for AI-assisted development.
 ---
 
 # Discover Repo
 
-Generate a high-quality CLAUDE.md that serves as an index and architecture guide for the current repository.
+Generate a high-quality AGENTS.md that serves as an index and architecture guide for the current repository, with a CLAUDE.md symlink for Claude Code compatibility.
 
 ## Output
 
-- `CLAUDE.md` at the current directory root
-- `CLAUDE.discovery.md` if `CLAUDE.md` already exists (never overwrite)
+- `AGENTS.md` at the current directory root (primary artifact)
+- `CLAUDE.md` symlink pointing to `AGENTS.md`
+- If `AGENTS.md` already exists: write to `AGENTS.discovery.md` and symlink `CLAUDE.discovery.md` to it (never overwrite)
 
 ## Process
 
@@ -135,7 +136,7 @@ Flag anything uncertain with [NEEDS VERIFICATION].
 
 ### Phase 2 - Synthesis
 
-After all 5 agents complete, synthesize their reports into a single CLAUDE.md.
+After all 5 agents complete, synthesize their reports into a single AGENTS.md.
 
 Read [references/template.md](references/template.md) for the output structure.
 Read [references/example-publisher-claude-md.md](references/example-publisher-claude-md.md) as a quality benchmark.
@@ -153,7 +154,8 @@ Synthesis rules:
 
 ### Phase 3 - Write
 
-1. Check if `CLAUDE.md` exists in the current directory
-2. If exists: write to `CLAUDE.discovery.md`
-3. If not: write to `CLAUDE.md`
-4. Report what was written and where
+1. Check if `AGENTS.md` exists in the current directory
+2. If exists: write to `AGENTS.discovery.md` and create symlink `CLAUDE.discovery.md -> AGENTS.discovery.md`
+3. If not: write to `AGENTS.md` and create symlink `CLAUDE.md -> AGENTS.md`
+4. Create symlinks using: `ln -sf <target> <link_name>` (relative path, so the symlink is portable)
+5. Report what was written and where
