@@ -1,16 +1,16 @@
 ---
 name: win-report
-description: Discover and synthesize engineering wins from GitHub PRs/issues, Confluence, Jira, and Slack over a configurable time range. Produces a structured markdown report of top wins with evidence, impact, and ownership. Use when the user says "/win-report", "summarize my wins", "what did I ship last month", "monthly wins report", "generate wins for performance review", or asks for a summary of their recent engineering contributions.
+description: Discover and synthesize engineering wins from GitHub PRs/issues, Confluence, Jira, Notion, and Slack over a configurable time range. Uses exhaustive two-phase subagent architecture to paginate all sources and read all artifacts in full before synthesizing. Produces a structured markdown report of top wins with evidence, impact, and ownership. Use when the user says "/win-report", "summarize my wins", "what did I ship last month", "monthly wins report", "generate wins for performance review", or asks for a summary of their recent engineering contributions.
 ---
 
 # Win Report
 
-Discover and synthesize engineering wins into a structured report.
+Discover and synthesize engineering wins into a structured report using exhaustive multi-source research.
 
 ## Invocation
 
-- `/win-report` - last 30 days, prompts for sources
-- `/win-report 2026-03-01 2026-04-01` - custom date range
+- `/win-report` - last 30 days, prompts for all params
+- `/win-report 2026-03-01 2026-04-01` - custom date range, prompts for rest
 
 ## Setup
 
@@ -18,102 +18,151 @@ Discover and synthesize engineering wins into a structured report.
 
 Extract start/end dates from args (YYYY-MM-DD format). If none provided, default to last 30 days from today.
 
-### 2. Detect available artifact sources
+### 2. Detect available sources
 
 Probe the environment for each source type:
 
 | Source | Detection method |
 |--------|-----------------|
-| GitHub | Run `gh api /user --jq '.login'`. If succeeds, GitHub is available and username is captured. If fails, note unavailable - suggest `gh auth login`. |
+| GitHub | Run `gh api /user --jq '.login'`. If succeeds, GitHub is available and username is captured. |
 | Confluence | Check if `mcp__atlassian__search` tool exists. |
 | Jira | Check if `mcp__atlassian__searchJiraIssuesUsingJql` tool exists. |
+| Notion | Check if any `mcp__notion__*` tools exist. |
 | Slack | Check if any `mcp__slack__*` tools exist. |
 
-### 3. Present sources and confirm with user
+### 3. Collect inputs (single consolidated prompt)
 
-Display all detected sources with status (available / unavailable). Then ask in a **single consolidated prompt**:
+Ask in one prompt:
 
-- Which sources to use (default: all available)
-- **GitHub:** repos to search (`owner/repo` or full URLs - parse URLs to `owner/repo`)
-- **Confluence:** spaces or search terms to scope (optional)
-- **Jira:** projects or JQL filters (optional)
-- **Slack:** channels or search terms (optional)
-- Any additional sources to paste (design docs, incident reports, dashboards, runbooks, postmortems)
-- Optional hints: remembered wins, projects, launches, incidents, team/system names
+- **GitHub org(s):** comma-separated org names to search (e.g. `CBA-General, CBA-QTN-Global-Cloud-Transformation`)
+- **MCPs to use:** which detected non-GitHub sources to include (default: all available)
+- **Hints (optional):** projects, launches, incidents, team/system names to weight during triage
+- **Additional sources to paste (optional):** design docs, incident reports, dashboards, runbooks, postmortems
 
-Treat user hints as guidance, not the full answer set.
+Do not ask for repo lists, Confluence spaces, Jira projects, or Slack channels. These are auto-discovered from user activity.
 
 ---
 
-## Phase 0 - Artifact Discovery
+## Phase 0 - GitHub Repo Discovery
 
-Search all confirmed sources in parallel.
+Auto-discover all repos where the user has activity in the date range.
 
-**GitHub** (if enabled):
+For each org, run:
 ```
-gh pr list --repo {repo} --author {username} --state merged \
-  --search "merged:>{start_date}" --limit 100 \
-  --json number,title,body,mergedAt,additions,deletions,labels,url
-
-gh issue list --repo {repo} --assignee {username} --state all \
-  --search "created:>{start_date}" --limit 50 \
-  --json number,title,body,state,createdAt,url
-```
-Run across all repos in parallel.
-
-**Confluence** (if enabled):
-- Use `mcp__atlassian__search` or `mcp__atlassian__searchConfluenceUsingCql` to find pages authored/edited by the user in the date range, scoped to specified spaces.
-
-**Jira** (if enabled):
-- Use `mcp__atlassian__searchJiraIssuesUsingJql` with JQL like `assignee = currentUser() AND updated >= "{start_date}"` scoped to specified projects.
-
-**Slack** (if enabled):
-- Search for messages from the user in specified channels within the date range.
-
-**User-pasted content:**
-- Incorporate any design docs, incident reports, dashboards provided during setup.
-
-### Signal extraction
-
-Scan all artifacts for candidate signals:
-- Merged PRs with large/complex diffs
-- Architectural changes, security fixes, performance improvements
-- Infra changes, incident resolution, migrations
-- Reliability improvements, tooling/framework work
-- Test harness additions, automation that reduced manual work
-- Changes that enabled other engineers
-- Decisions that reduced operational or technical risk
-- Cross-team or cross-repo coordination
-- Debugging of ambiguous or high-stakes failures
-
-For each signal, extract:
-```
-### Candidate signal
-- **Artifact:** [PR / issue / doc / incident / ticket]
-- **Source:** [GitHub / Confluence / Jira / Slack]
-- **What changed:** ...
-- **Why it likely mattered:** ...
-- **Possible win category:** [complexity / ambiguity / risk reduction / enablement / impact]
+gh search prs --author={username} --owner={org} --merged=>{start_date} --limit 100 --json repository
 ```
 
-Then cluster related artifacts into win threads:
-```
-### Win thread
-- **Thread name:** ...
-- **Artifacts:** [list across all sources]
-- **Core change:** ...
-- **Possible impact:** ...
-```
+Paginate until no more results. Deduplicate repo names across all orgs to build the full repo list.
 
-Do not ask questions yet.
+Log: "Discovered {N} repos with activity across {M} orgs"
 
 ---
 
-## Phase 1 - Triage
+## Phase 1 - Exhaustive Discovery (parallel subagents)
 
-Convert discovered signals into **5-8 candidate win threads**.
+Spawn one subagent per source. Each subagent's sole job: **paginate until results are exhausted** and return a complete artifact manifest. No content reading in this phase.
 
-For each, write a one-line hypothesis: `What I did -> why it mattered`
+Each subagent prompt MUST include verbatim:
+> "IMPORTANT: You must paginate until no more results are returned. Do not stop at the first page. Continue requesting the next page/cursor/offset until the API returns zero results."
+
+### GitHub Discovery Subagent
+
+Find all merged PRs and issues by the user across all discovered repos:
+
+```
+gh search prs --author={username} --owner={org} --merged={start_date}..{end_date} --limit 100 --json number,title,url,repository,mergedAt
+```
+
+Paginate with `--page` until empty. Repeat per org. Then find issues:
+
+```
+gh search issues --author={username} --owner={org} --created={start_date}..{end_date} --limit 100 --json number,title,url,repository,createdAt,state
+```
+
+Return manifest: `{number, title, url, repo, date, type: "pr"|"issue"}` for every result.
+
+### Confluence Discovery Subagent
+
+Use `mcp__atlassian__searchConfluenceUsingCql` with:
+```
+CQL: contributor = currentUser() AND lastmodified >= "{start_date}" AND type = page
+```
+
+Paginate with cursor until no more results. Return manifest: `{pageId, title, url, date, spaceKey}` for every page.
+
+### Notion Discovery Subagent
+
+Use Notion search/query tools to find all pages authored/edited by the user in the date range. Paginate until exhausted. Return manifest: `{pageId, title, url, date}` for every page.
+
+### Slack Discovery Subagent
+
+Use Slack search tools to find all messages from the user in the date range. Paginate until exhausted. Collect unique thread root IDs. Return manifest: `{threadId, channel, date, preview_text}` for every thread.
+
+### Jira Discovery Subagent
+
+Use `mcp__atlassian__searchJiraIssuesUsingJql` with:
+```
+JQL: (assignee = currentUser() OR reporter = currentUser()) AND updated >= "{start_date}"
+```
+
+Paginate with `startAt` until no more results (increment by `maxResults` each call). Return manifest: `{issueKey, summary, url, status, type, updated}` for every ticket.
+
+### After Phase 1
+
+Merge all manifests. Log total counts:
+```
+"Found: {N} PRs, {M} issues, {P} Confluence pages, {Q} Notion pages, {R} Slack threads, {S} Jira tickets"
+```
+
+---
+
+## Phase 2 - Deep Reading (parallel subagents)
+
+Take the full manifest from Phase 1. Spawn parallel subagents, each receiving a batch of ~10-15 artifacts to read in full.
+
+Each subagent prompt MUST include verbatim:
+> "IMPORTANT: Read the FULL body/content of every artifact assigned to you. Do not summarize from titles or metadata alone. Read the actual content."
+
+### What "read in full" means per artifact type
+
+| Type | What to read |
+|------|-------------|
+| PR | Body/description, review comments, linked issues mentioned in body, file change summary (additions/deletions, key files) |
+| Issue | Body, all comments |
+| Confluence page | Full page body via `mcp__atlassian__getConfluencePage` with `contentFormat: "markdown"` |
+| Notion page | Full page body content |
+| Slack thread | All messages in the thread (use thread reply APIs, not just root message) |
+| Jira ticket | Description, all comments, linked issues/PRs |
+
+### Signal extraction per artifact
+
+For each artifact, the deep-read subagent returns:
+
+```
+### {artifact_url}
+- **Type:** PR / issue / page / thread / ticket
+- **What changed/discussed:** 1-3 sentences of actual content summary
+- **Why it likely mattered:** impact signals found in the content
+- **Complexity signals:** technical difficulty, ambiguity, cross-system, novel problem
+- **Related artifacts mentioned:** links to other PRs, tickets, docs found in the content
+- **Ownership signals:** "I designed", "I implemented", decision language, leadership language
+```
+
+### Batch sizing
+
+~10-15 artifacts per subagent. For 150 artifacts total, spawn ~10-15 parallel subagents. For 50 artifacts, spawn ~4-5.
+
+---
+
+## Phase 3 - Triage
+
+Convert Phase 2 signal summaries into **5-8 candidate win threads**.
+
+### Clustering
+
+Group related artifacts across sources into threads. A single win often spans multiple PRs, a Jira ticket, a Confluence design doc, and Slack discussions.
+
+For each thread, write a one-line hypothesis: `What I did -> why it mattered`
 
 Example: `Refactored Helm deployment templates across 7 services -> reduced config drift and lowered deployment failure risk.`
 
@@ -139,12 +188,12 @@ Keep an artifact-poor candidate only if clearly stronger than better-evidenced a
 
 ---
 
-## Phase 2 - Gap-filling questions
+## Phase 4 - Gap-filling questions
 
 Single round, **8-15 questions max**. Rules:
 
 - One question may cover multiple wins
-- Prefer extracting info from artifacts over asking
+- Prefer extracting info from artifacts over asking (Phase 2 should have captured most context)
 - Do not ask for context the artifacts already show
 - If metrics are missing, ask for proxies:
   - Before vs after time, incident count, failure rate
@@ -158,7 +207,7 @@ Do not ask low-leverage biography questions.
 
 ---
 
-## Phase 3 - Produce the win list
+## Phase 5 - Produce the win list
 
 Output the **top 3 wins**. Each win must use this exact template:
 
@@ -218,7 +267,7 @@ Use an even stricter, more compressed style than the win entries.
 
 Write the full report to `wins-YYYY-MM.md` in the current working directory.
 
-The report contains only the final polished wins - no intermediate work (candidate threads, scoring, selection rationale). Those are working artifacts used during discovery and triage but excluded from the output file.
+The report contains only the final polished wins - no intermediate work (candidate threads, scoring, selection rationale, discovery manifests). Those are working artifacts used during discovery and triage but excluded from the output file.
 
 Include in this order:
 1. Title header: `# Win List - {Month} {Year}`
@@ -249,3 +298,4 @@ Target reader: skeptical, time-poor outsider with no context on the engineering 
 - **Evidence requirement:** Prefer wins with artifacts. Flag weak/missing evidence clearly.
 - **Progress over perfection:** Use placeholders and "Notes to self" rather than blocking on missing details
 - **Tone:** Direct but supportive. No harsh scoring. No gotchas.
+- **Thoroughness over speed:** This skill is designed to take longer than typical interactions. Exhaustive source reading is the point - do not shortcut pagination or skip reading artifact content.
