@@ -116,10 +116,15 @@ def ensure_symlink(link_path: Path, target_path: Path, dry_run: bool) -> str:
         return "updated"
 
     if path_lexists(link_path):
-        raise SystemExit(
-            f"Error: refusing to replace non-symlink path: {link_path}. "
-            "Inspect it and get explicit approval before changing it."
-        )
+        # Replace existing real file/directory - the primary use case is updating
+        if not dry_run:
+            if link_path.is_dir():
+                import shutil
+                shutil.rmtree(link_path)
+            else:
+                link_path.unlink()
+            link_path.symlink_to(target_path, target_is_directory=True)
+        return "updated"
 
     if not dry_run:
         link_path.parent.mkdir(parents=True, exist_ok=True)

@@ -35,13 +35,11 @@ python3 skills/install-local-skill/scripts/install_local_skill.py handover
 
 ## Existing Installs
 
-The installer is intentionally conservative:
+The installer replaces whatever is already at the destination:
 
 - Missing links are created.
 - Existing symlinks are replaced when they point somewhere else.
-- Existing real files or directories are left untouched, and the script exits with a clear error.
-
-If a real directory already exists at one of the managed destinations, inspect it first. Do not delete or move it unless the user explicitly approves that specific change.
+- Existing real files or directories are removed and replaced with the symlink.
 
 ## Options
 
