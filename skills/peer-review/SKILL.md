@@ -312,6 +312,9 @@ Target reader: the person being reviewed and their manager.
 - No jargon without brief explanation
 - No inflated claims - grounded in evidence
 - Supportive tone for strengths, constructive framing for growth areas
+- **Never reference specific hours worked** (e.g., "stayed until midnight", "worked weekends"). Frame dedication as "sustained focus", "persistence", or "availability" - specific hours can read as a work-life balance concern rather than a compliment.
+- **Be concise** - aim for density over length. If 2 paragraphs can carry the same content as 3, use 2. Every sentence should earn its place.
+- **Write for an engineering manager, not an engineer** - describe impact and outcomes at a level a non-practitioner can follow. Avoid laundry lists of technologies. Instead of "Helm chart archetypes, Argo Rollouts, per-app vault isolation, Istio egress centralization", write "deployment automation, secret management, networking, and safe rollout strategies". The Evidence Appendix is where technical specifics live.
 
 ## Constraints
 
