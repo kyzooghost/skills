@@ -313,7 +313,12 @@ Target reader: the person being reviewed and their manager.
 - No inflated claims - grounded in evidence
 - Supportive tone for strengths, constructive framing for growth areas
 - **Never reference specific hours worked** (e.g., "stayed until midnight", "worked weekends"). Frame dedication as "sustained focus", "persistence", or "availability" - specific hours can read as a work-life balance concern rather than a compliment.
-- **Be concise** - aim for density over length. If 2 paragraphs can carry the same content as 3, use 2. Every sentence should earn its place.
+- **Be concise - density over length.** If 2 paragraphs can carry the same content as 3, use 2. Every sentence should earn its place.
+- **Use dot points when they improve scannability.** If an answer contains 3+ parallel items (projects, examples, strengths), present them as a bulleted list rather than embedding in prose. Dot points are easier to scan for an EM reading multiple peer reviews.
+- **Target 4-6 lines per paragraph.** Break at natural seams; long paragraphs lose the reader.
+- **Don't hedge live results.** If something is deployed and running, state it as fact. "Potential" or "expected" undermines work that is already real.
+- **Concrete stakes over generic pressure.** "Under pressure" is vague; name what made the situation high-stakes specifically (e.g., "during an active production incident affecting X customers").
+- **Quantify business impact where defensible.** Don't leave impact abstract ("improved performance") when a concrete order-of-magnitude is supportable ("reduced p99 latency from 2s to 200ms"). Back-of-envelope math from verifiable inputs is fine - don't fabricate precision.
 - **Write for an engineering manager, not an engineer** - describe impact and outcomes at a level a non-practitioner can follow. Avoid laundry lists of technologies. Instead of "Helm chart archetypes, Argo Rollouts, per-app vault isolation, Istio egress centralization", write "deployment automation, secret management, networking, and safe rollout strategies". The Evidence Appendix is where technical specifics live.
 
 ## Constraints
