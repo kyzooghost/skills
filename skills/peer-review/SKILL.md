@@ -305,6 +305,8 @@ Target reader: the person being reviewed and their manager.
 - First-person "I observed", "I noticed", "In my experience working with them"
 - Specific over generic - name the project, the decision, the outcome
 - Growth feedback framed as "what would amplify their impact" not "what they did wrong"
+- **Growth answers must lead with affirmation.** Open by naming what they already do well in the area, then frame the growth point as "leaning further into" or "doing more of" something - never as a gap or deficiency. Use language like "I'd love to see them...", "the thing that would most amplify...", "there's an opportunity to..." rather than "they tend to...", "they need to...", "they don't yet...". Close by reinforcing that it's about confidence/habit, not capability.
+- **Never contrast strengths against growth areas.** Don't write "they execute well BUT don't drive direction" - this reads as a backhanded compliment. Instead, treat the strength and the growth point as separate observations. Acknowledge where the growth instinct is already emerging before suggesting more of it.
 - No passive voice where attribution matters
 - Interaction-based evidence is strongest - prefer "I saw them do X in [situation]" over "they did X"
 - 1-2 paragraphs per answer - enough depth to be substantive, short enough to respect the reader's time
