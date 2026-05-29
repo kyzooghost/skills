@@ -220,6 +220,15 @@ From evidence patterns (NOT PR mechanics - do not evaluate PR size, code style, 
 
 ## Phase 4 - Gap-filling questions
 
+### Prior-year calibration
+
+Before asking questions, check for prior feedback the user has written for the same person (e.g., `*-2025-feedback.md`, prior peer review files in the same directory). If found, read it to:
+- **Match length and density** - if last year was 1 paragraph per question, this year should be similar
+- **Avoid repeating the same themes** - don't make the same point two years running unless it's still the strongest example
+- **Track growth arcs** - last year's growth suggestion may be this year's strength example
+
+### Questions
+
 Single round, **~15 questions max**. Split roughly 1/3 scope, 2/3 feedback.
 
 ### Scope verification (~5 questions)
@@ -253,6 +262,33 @@ Rules:
 - Frame growth questions around patterns you observed + ask if they resonate
 - If you noticed an interaction between the user and the person, ask about that specific moment
 - Do not ask for context the artifacts already show
+
+---
+
+## Phase 4.5 - Outline validation
+
+After the user answers gap-filling questions, present a brief **per-question outline** before writing full prose. This catches attribution errors, wrong emphasis, and question-routing mistakes before they require revision.
+
+Format:
+```
+Here's my planned structure before I write:
+
+**Q1 (strengths):** Lead with [example A], then [example B]. Attribute [X] to them.
+**Q2 (growth enabled):** Frame as [their specific contribution], not [ownership of the whole initiative].
+**Q3 (better support):** [Theme]. Route [other theme] to Q4 instead since it's about their habits, not your growth.
+**Q4 (other feedback):** [Theme A], [Theme B].
+
+Anything to swap, reframe, or move between questions?
+```
+
+Rules:
+- **Verify attribution** - for each "they gave me X" or "they trusted me with Y", confirm with the user who actually made that decision. Separate "they supported me during X" from "they decided to give me X scope."
+- **Verify emphasis** - name the 1-2 examples you plan to lead with per question; the user may say "actually they're less central to that" or "this other thing matters more."
+- **Verify question routing** - for upward feedback specifically:
+  - "How they support YOUR growth" → support/development question
+  - "Their engineering habits or leadership patterns" → feedback for manager question
+  - "Org-level observations (headcount, scope, sustainability)" → feedback for manager question
+- **No prescriptive org-level solutions** in growth/support sections. Describe what you'd value ("more intentional time for X") not what the org should do ("hire more people", "reduce scope").
 
 ---
 
@@ -317,11 +353,13 @@ Target reader: the person being reviewed and their manager.
 - **Never reference specific hours worked** (e.g., "stayed until midnight", "worked weekends"). Frame dedication as "sustained focus", "persistence", or "availability" - specific hours can read as a work-life balance concern rather than a compliment.
 - **Be concise - density over length.** If 2 paragraphs can carry the same content as 3, use 2. Every sentence should earn its place.
 - **Use dot points when they improve scannability.** If an answer contains 3+ parallel items (projects, examples, strengths), present them as a bulleted list rather than embedding in prose. Dot points are easier to scan for an EM reading multiple peer reviews.
-- **Target 4-6 lines per paragraph.** Break at natural seams; long paragraphs lose the reader.
+- **Target 2-4 sentences per paragraph.** Break at natural seams; long paragraphs lose the reader.
 - **Don't hedge live results.** If something is deployed and running, state it as fact. "Potential" or "expected" undermines work that is already real.
 - **Concrete stakes over generic pressure.** "Under pressure" is vague; name what made the situation high-stakes specifically (e.g., "during an active production incident affecting X customers").
 - **Quantify business impact where defensible.** Don't leave impact abstract ("improved performance") when a concrete order-of-magnitude is supportable ("reduced p99 latency from 2s to 200ms"). Back-of-envelope math from verifiable inputs is fine - don't fabricate precision.
 - **Write for an engineering manager, not an engineer** - describe impact and outcomes at a level a non-practitioner can follow. Avoid laundry lists of technologies. Instead of "Helm chart archetypes, Argo Rollouts, per-app vault isolation, Istio egress centralization", write "deployment automation, secret management, networking, and safe rollout strategies". The Evidence Appendix is where technical specifics live.
+- **Attribution caution.** Never claim "they gave me X scope" or "they trusted me with Y" unless the user has confirmed the attribution. The person being reviewed may have supported during X without being the one who made the scope decision. Prefer "their mentorship during X" or "their support throughout Y" over ownership claims you haven't verified.
+- **No prescriptive org-level solutions in growth sections.** Describe what you'd value or what would help ("a recurring cadence for development conversations") not what the org should do ("hire more people", "reduce their scope"). The reader is the person's manager - let them draw their own conclusions about resourcing.
 
 ## Constraints
 
