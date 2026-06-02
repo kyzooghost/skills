@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Command"
+  short_description: "Sync repo commands across local agents"
+  default_prompt: "Use $sync-command to sync the doc-update command from this repo."
