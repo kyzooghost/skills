@@ -1,0 +1,4 @@
+interface:
+  display_name: "Create PR"
+  short_description: "Generate and create GitHub PRs"
+  default_prompt: "Use $create-pr to create a PR for the current branch."

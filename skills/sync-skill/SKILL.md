@@ -9,6 +9,8 @@ description: Sync a skill from this repo into the local machine's skill director
 
 Sync a skill from this repository by making `~/.claude/skills/<skill>` the source-facing symlink to the repo skill, then making `~/.agents/skills/<skill>` and `~/.codex/skills/<skill>` point at the Claude skill path.
 
+Codex discovers local functionality from `~/.codex/skills` in this setup. Do not install command files into `~/.codex/commands` expecting Codex to recognize them. When the source artifact is a repo command under `commands/<name>.md`, use `$sync-command`; it creates or reuses a command-backed skill for Codex.
+
 Use the bundled script for the filesystem changes so repeated syncs update links consistently.
 
 ## Workflow
@@ -31,7 +33,8 @@ python3 skills/sync-skill/scripts/install_local_skill.py handover
    - `~/.claude/skills/<skill>` -> repo skill directory
    - `~/.agents/skills/<skill>` -> `~/.claude/skills/<skill>`
    - `~/.codex/skills/<skill>` -> `~/.claude/skills/<skill>`
-5. Tell the user to restart the relevant agent app so it reloads skill metadata.
+5. For Codex, verify `~/.codex/skills/<skill>/SKILL.md` is readable through the symlink.
+6. Tell the user to restart the relevant agent app so it reloads skill metadata.
 
 ## Existing Installs
 
