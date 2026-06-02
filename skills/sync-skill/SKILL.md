@@ -1,15 +1,15 @@
 ---
-name: install-local-skill
-description: Install or refresh a skill from this repo into the local machine's skill directories. Use when the user asks to make a repo skill available locally, install a local skill for Claude, Agents, or Codex, update local skill symlinks, or follow the .claude/skills source link pattern with .agents/skills and .codex/skills symlinks.
+name: sync-skill
+description: Sync a skill from this repo into the local machine's skill directories. Use when the user asks to make a repo skill available locally, sync a local skill for Claude, Agents, or Codex, update local skill symlinks, or follow the .claude/skills source link pattern with .agents/skills and .codex/skills symlinks.
 ---
 
-# Install Local Skill
+# Sync Skill
 
 ## Overview
 
-Install a skill from this repository by making `~/.claude/skills/<skill>` the source-facing symlink to the repo skill, then making `~/.agents/skills/<skill>` and `~/.codex/skills/<skill>` point at the Claude skill path.
+Sync a skill from this repository by making `~/.claude/skills/<skill>` the source-facing symlink to the repo skill, then making `~/.agents/skills/<skill>` and `~/.codex/skills/<skill>` point at the Claude skill path.
 
-Use the bundled script for the filesystem changes so repeated installs update links consistently.
+Use the bundled script for the filesystem changes so repeated syncs update links consistently.
 
 ## Workflow
 
@@ -24,7 +24,7 @@ python3 <this-skill-dir>/scripts/install_local_skill.py <skill-name-or-path>
 Example from this repo:
 
 ```bash
-python3 skills/install-local-skill/scripts/install_local_skill.py handover
+python3 skills/sync-skill/scripts/install_local_skill.py handover
 ```
 
 4. Verify the output shows all three managed links:
@@ -46,7 +46,7 @@ The installer replaces whatever is already at the destination:
 Use `--dry-run` to preview changes without writing symlinks:
 
 ```bash
-python3 skills/install-local-skill/scripts/install_local_skill.py handover --dry-run
+python3 skills/sync-skill/scripts/install_local_skill.py handover --dry-run
 ```
 
 Use `--repo-root <path>` when running from outside this repository and passing a skill name.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Skill"
+  short_description: "Sync repo skills across local agents"
+  default_prompt: "Use $sync-skill to sync the handover skill from this repo."

@@ -1,4 +1,0 @@
-interface:
-  display_name: "Install Local Skill"
-  short_description: "Install repo skills across local agents"
-  default_prompt: "Use $install-local-skill to install the handover skill from this repo."
