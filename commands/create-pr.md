@@ -121,7 +121,15 @@ Generate a concise title from the diff analysis. Use conventional commit format:
 | `**/api/**`, `**/*api*` | API contract tests pass |
 | Any config/env file | Verify deployment in target environment |
 
-## Step 6: Preview and Create
+## Step 6: Documentation Drift Check
+
+Run the `/doc-update` command to detect and fix documentation drift caused by the changes on this branch.
+
+- If drift is found and fixed, the doc-update command will present changes and optionally commit them.
+- If doc fixes are committed, re-run Step 3 (Gather Context) to include the doc changes in the PR description.
+- If no drift is found, proceed to the next step.
+
+## Step 7: Preview and Create
 
 Display the generated PR to the user in this format:
 
