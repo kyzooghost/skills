@@ -216,19 +216,19 @@ Output the **top 3 wins**. Each win must use this exact template:
 Short and outsider-readable.
 
 **What I shipped/solved:**
-1-2 punchy sentences.
+1-2 punchy sentences. Only list what the user actually authored - never a collaborator's solo doc. For original conceptual contributions use "I proposed X" / "I introduced X", not "the X framing". For additions to an existing system, frame as what was missing and what the user added (e.g. "EEZ lacked a cross-chain consistency-check primitive that Ethera had; I redesigned EEZ contracts to support a cross-chain rolling hash that fills that gap").
 
 **Why it mattered:**
 State the stakes and who benefited.
 
 **Why it was difficult:**
-Optional. Include only if it clarifies technical difficulty, ambiguity, or non-obvious judgment.
+Optional. Include only if it clarifies technical difficulty, ambiguity, or non-obvious judgment. Keep at the strategic level - name the hard problem, not the mechanism. No protocol/implementation mechanics (field names, data structures, algorithm internals) unless they change the impact story.
 
 **Impact (current):**
-Metrics or strong proxies. Include baseline where possible.
+Metrics or strong proxies. Include baseline where possible. Do not claim a single artifact "collapsed", "ended", or "resolved" a debate/ambiguity - describe what it gave the team (a shared test, a vocabulary, a buildable scope).
 
 **My ownership:**
-Use explicit "I" language. Clarify collaborator boundaries where relevant.
+Use explicit "I" language. For co-authored docs, name who owns which subsection (e.g. "I wrote the first draft; Victorien and I co-own the rest of the doc; Arthur owns the worked examples"). Use accurate authorship verbs - "authored", not "sole-authored", unless it is truly sole. Credit collaborators for ideas they proposed that the user validated/extended (e.g. "Florian proposed the core idea; I confirmed it via X and authored the writeup").
 
 **Evidence / artifacts:**
 - PRs, docs, dashboards, incidents, demos, tickets
@@ -240,6 +240,13 @@ Optional. Call out screenshots, adoption numbers, before-state, or metrics still
 **Notes to self (confirm later):**
 Short bullets only.
 ```
+
+### Framing rules (apply to every win)
+
+- **No umbrella double-counting.** If the specific contributions are listed (e.g. "proposed the trilemma", "owned pessimistic concurrency"), do not also list the umbrella artifact they sit under (e.g. "the framework") as a separate shipped item. The umbrella can appear in Evidence as supporting context, not in "What I shipped/solved".
+- **Decisions wins: cap at 3.** When a win is a list of decisions, pick the top 3 highest-leverage ones that collapsed the biggest branching points. Do not dump every decision the user drove.
+- **Don't disparage the prior state.** Frame the before-state neutrally as "broad and ambiguous with no clear focus", not as team incompetence ("confused", "disorganised", "messy"). The user's win is bringing focus, not rescuing a failing team.
+- **Impact-driven for an engineering manager.** The reader is an engineering manager + external reviewer, not a fellow protocol implementer. Cut technical detail that does not change the impact story. "Why it was difficult" names the hard problem and the non-obvious judgment, not the algorithm internals.
 
 After the wins, include a summary table:
 
@@ -274,19 +281,25 @@ Include in this order:
 2. Final win list (full template for each, numbered as "Win 1", "Win 2", etc.)
 3. Summary table mapping each win to its core signal and impact proxy
 4. Optional public artifact idea
+5. Optional "Other items worth noting (not Win-level on their own)" - tightly curated, top 2-3 items only, not a dump of everything that didn't make the top 3. Each item is one tight bullet. If in doubt, leave it out.
 
 ---
 
 ## Writing rules
 
-Target reader: skeptical, time-poor outsider with no context on the engineering team.
+Target reader: an engineering manager and a skeptical, time-poor outsider with no context on the engineering team. Optimise for impact and ownership clarity, not technical completeness.
 
 - Every sentence must earn its place; each introduces a new concept
-- Cut fluff aggressively
+- Cut fluff aggressively; cut technical mechanics (field names, data structures, algorithm internals) that do not change the impact story
 - No team-internal jargon unless briefly explained
-- No inflated claims
+- No inflated claims - do not say a single artifact "collapsed", "ended", or "resolved" a debate/ambiguity; say what it gave the team (a shared test, a vocabulary, a buildable scope)
+- Do not disparage the prior state of the team/repo - frame the before-state as broad/ambiguous with no clear focus, not as incompetence
 - No passive voice where ownership matters
 - Do not accept "we" as contribution - force explicit "I did X" ownership boundaries
+- For original conceptual contributions, use "I proposed X" / "I introduced X", not "the X framing" or passive voice
+- Use accurate authorship verbs - "authored", not "sole-authored", unless it is truly sole; never claim sole authorship of a co-authored doc
+- For co-authored docs, name who owns which subsection; do not list a collaborator's solo doc as the user's shipped item
+- Credit collaborators for ideas they proposed that the user validated/extended
 - Prefer "I designed", "I implemented", "I debugged", "I decided", "I automated", "I de-risked"
 - Never use "supported", "helped with", "involved in" unless truly the best description
 - Each win should stand on its own without external context
