@@ -64,6 +64,19 @@ Post **companion comments** on each additional file that needs changes:
 
 For supplementary code changes too large for a suggestion block, post a companion comment with a fenced code block showing the required changes and a mini ASCII diagram of the data flow that must be threaded through.
 
+### Format C: Test coverage gap (`[TEST GAP]`)
+
+For requesting missing tests - no suggestion block needed.
+
+Structure:
+1. Bold title: `**[TEST GAP] Title describing what's not covered**`
+2. Numbered list of specific missing behaviors, each with:
+   - What production code can be deleted/mutated without failing tests
+   - What the test should assert
+3. Note on feasibility (can it be done with existing harness or does it depend on unimplemented features)
+
+Anchor on the test file (last line or near the gap) rather than production code.
+
 ## Procedure
 
 1. **Identify the finding** from the review report
@@ -96,6 +109,7 @@ For supplementary code changes too large for a suggestion block, post a companio
 - **Diagrams over prose**: for anything involving data flow, control flow, or timing - draw it
 - **Suggestion blocks must compile**: test mentally that the suggestion is syntactically valid
 - **One finding = one comment thread**: don't combine findings
+- **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2"). Ticket references like `#4332` are fine when you intend the link.
 
 ## GitHub API Details
 
