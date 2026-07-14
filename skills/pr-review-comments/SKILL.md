@@ -58,9 +58,9 @@ Structure for the **primary comment** (on the most relevant file/line):
 5. TL;DR block: What / Why / Impact / Fix
 
 Post **companion comments** on each additional file that needs changes:
-1. Suggestion block with that file's fix
+1. Suggestion block with that file's fix (if applicable)
 2. Same bold severity+title (links the comments together)
-3. One line: `See <link-to-primary-comment>`
+3. Link to the primary comment's actual URL (from the `html_url` returned when posting the primary): `See https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}`
 
 For supplementary code changes too large for a suggestion block, post a companion comment with a fenced code block showing the required changes and a mini ASCII diagram of the data flow that must be threaded through.
 
