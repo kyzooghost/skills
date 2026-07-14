@@ -70,10 +70,12 @@ For requesting missing tests - no suggestion block needed.
 
 Structure:
 1. Bold title: `**[TEST GAP] Title describing what's not covered**`
-2. Numbered list of specific missing behaviors, each with:
-   - What production code can be deleted/mutated without failing tests
-   - What the test should assert
+2. Numbered list of specific production behaviors that have no test catching their removal:
+   - Which production code path is untested (file + line reference)
+   - What the test should assert to cover it
 3. Note on feasibility (can it be done with existing harness or does it depend on unimplemented features)
+
+Framing: "this behavior is untested" / "no test would catch removal of X" - NOT "delete this production code."
 
 Anchor on the test file (last line or near the gap) rather than production code.
 
