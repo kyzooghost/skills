@@ -98,6 +98,9 @@ production-safe. Include tests. Include any preconditions on other tickets.>
   comment anchors: put the ```suggestion``` block INSIDE the "In this PR"
   bullet of the Recommendation summary, so the code and its rationale sit
   together at the top of the comment.
+- Even "add an inline comment / TODO / marker" recommendations go in a
+  ```suggestion``` block, containing the exact edited line(s) - never as
+  prose. The reader should be one click away from applying the change.
 - If the fix is too large for a suggestion block, or spans multiple
   non-contiguous edits: describe it in Section 4 (Recommendation detail) with
   a fenced code block or an ASCII data-flow diagram.
@@ -112,22 +115,36 @@ production-safe. Include tests. Include any preconditions on other tickets.>
 **Companion comment linking.** Post companion comments on each additional
 file. Each companion:
 - Uses the same four-section skeleton.
-- Uses the same `**[SEVERITY-N] ...**` title (with a distinct sub-title if
-  helpful for the companion's specific angle).
+- Uses the **EXACT SAME** `**[SEVERITY-N] Title of the defect**` as the
+  primary - verbatim, no sub-title variation, no rewording. Reader scanning
+  the PR must instantly recognize the comments as one finding. The
+  companion's specific angle (driver-side / test-side / follow-up anchor / etc.)
+  is expressed in the Section 1 plain-English intro, NOT in the title.
 - Ends with: `See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}`
   (real URL from the primary's `html_url`).
+
+The only exception is `[TEST GAP]` companions, which by convention use their
+own `**[TEST GAP] ...**` marker (a different severity category). They still
+end with a `See primary comment:` link.
 
 The primary is the comment on the file/line where the defect is most
 concentrated; companions cover other affected files and can also be used to
 "anchor" the follow-up ticket at the driver-side / consumer-side landing zone
 even when no in-PR code change happens there.
 
-**Worked example - companion comment where the in-PR fix IS a suggestion:**
+**Worked example - companion comment where the in-PR fix IS a suggestion.** The
+title below is the primary's title, reused verbatim. The companion's specific
+angle ("startup must fail-fast until override substrate lands") is expressed
+in the Section 1 intro, not in the title.
 
 ````
-**[MEDIUM-1] Follower loop startup must fail-fast until override substrate lands**
+**[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
 
-<Section 1 - plain English: 2-5 sentences on what breaks, when, and why it matters.>
+<Section 1 - plain English: 2-5 sentences framing THIS FILE'S angle on the
+finding. E.g. "This is the in-PR landing zone: the startup branch must
+fail-fast until the override substrate lands, otherwise operators enabling
+the flag get a driver that reverts at the first nested-callback inbound.">
+
 
 ---
 
@@ -160,12 +177,21 @@ Notes on the suggestion above:
 See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}
 ````
 
-**Worked example - companion comment where NO in-PR code change is needed on this file (follow-up anchor only):**
+**Worked example - companion comment where NO in-PR code change is needed on
+this file (follow-up anchor only).** The title matches the primary verbatim
+again. The companion's specific angle ("this is the driver-side half of the
+gap - `Optional.empty()` here defeats even a corrected planner") lives in
+Section 1.
 
 ````
-**[MEDIUM-1] `Optional.empty()` overrides are the driver-side half of the gap**
+**[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
 
-<Section 1 - plain English: why this line matters even though nothing changes here.>
+<Section 1 - plain English framing THIS SITE's role in the finding.
+E.g. "This is the driver-side half of the gap. Even if the planner returned a
+CallParameter with SYSTEM_ADDRESS as sender, `Optional.empty()` here defeats
+strict balance validation because no overrides map funds the sender. Anchoring
+here so the follow-up ticket has a clear driver-side landing point.">
+
 
 ---
 
@@ -237,6 +263,16 @@ Anchor on the test file (last line or near the gap) rather than production code.
 ## Writing Rules
 
 - **Concise**: reader decides in <30 seconds whether to act
+- **Every word earns its place in Section 1 and Section 2 (Format B).** Section 1 (plain-English intro) and Section 2 (Recommendation summary) are the ONLY parts a 0-context reader is guaranteed to read - the title tells them a defect exists, then they scan these two sections to decide whether to act. Section 3 (Problem detail) is where technical depth belongs. Apply this discipline hard:
+  - **No "In plain terms:", "Basically,", "Essentially," preambles.** The section is plain English by convention. Just state the defect.
+  - **No adjectives that repeat the setup.** "Silent narrowing" when the whole point is that it's silent → drop "silent". "Weak size-only assertions" when the whole comment argues weakness → drop "Weak".
+  - **Positive framing over negative.** "so X can find them" beats "otherwise X cannot find them". "no `SimulateResponse` sent" beats "without sending any `SimulateResponse`".
+  - **Merge adjacent clauses when they share a subject.** "It ONLY asks for direct children and it emits ..." → "It only asks for its direct children and emits ...".
+  - **Parallel structure** for three-item lists. "no source-proxy derivation, no dispatcher-code install, no static-call enforcement" reads faster than "it skips X, Y, and Z".
+  - **Numeric ranges: use power notation.** `[2^31, 2^32-1]` beats `[2,147,483,648, 4,294,967,295]` - readers scan the exponent instantly.
+  - **Drop qualifiers that are obvious from the frame.** "one small change" as a hint that the in-PR fix is small is unnecessary if the suggestion block is already visible. "the review's clause" > "This is the ... clause of the review".
+  - **Cut over "however", "as-is", "specifically", "actually".** These usually add length without content. If the contrast is real, the reader picks it up from the substance.
+  - **Read Section 1 out loud once.** If you stumble on a clause, rewrite it. If you re-read a sentence to parse it, split it.
 - **No filler**: cut "it would be preferable to" - just state the fix
 - **Bound risk**: always state why severity is what it is (not higher)
 - **Diagrams over prose**: for anything involving data flow, control flow, or timing - draw it
@@ -247,6 +283,12 @@ Anchor on the test file (last line or near the gap) rather than production code.
 - **Suggestion block placement (Format B)**: if the in-PR fix is a small self-contained code change on the file this comment anchors, put the ```suggestion``` block INSIDE the "In this PR" bullet of Section 2, not in Section 4. Section 4 then just references it.
 - **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2") EXCEPT when quoting a real ticket reference like `#4342`.
 - **Preamble discipline for suggestion blocks**: never precede a ```suggestion``` block with a "Suggested code:" or "Here is the fix:" preamble - the block is self-explanatory. Any accompanying explanation goes AFTER as "Notes on the suggestion above: ..." if needed.
+- **Inline-comment recommendations MUST be suggestion blocks**: if the recommendation is "add an inline comment / TODO / marker / Javadoc line", render it as a ```suggestion``` block containing the exact edited code - never as prose that describes the comment. The reader should be one click away from applying the change. This includes:
+  - Adding a leading comment line above an existing statement (include the existing statement in the suggestion so GitHub applies the change).
+  - Adding a trailing `// ...` comment on an argument or field (include the whole line the argument sits on).
+  - Inserting a placeholder test method (`@Disabled` skeleton) between existing test methods (include the closing `}` of the preceding test in the suggestion so the insertion point is anchored).
+  - Extending a class-level Javadoc block (include the full replacement Javadoc, or - if the anchor lands mid-Javadoc - the enclosing paragraph).
+- **When a comment recommends "annotate with a TODO/FIXME/marker", it MUST be a suggestion**: prose like "add a TODO(FOO) here noting X" is not enough - the reader has to translate that into an edit themselves, which is friction. Always ship the ready-to-apply diff.
 
 ## GitHub API Details
 
@@ -305,3 +347,6 @@ StreamManager              EezDisconnectAborter
 - [ ] For Format B: Recommendation summary explicitly names both "In this PR (#TICKET)" and "Follow-up ticket" bullets
 - [ ] For Format B: if there is a code suggestion, it lives inside the "In this PR" bullet of Section 2 (not in Section 4), and has no "Suggested code:" preamble
 - [ ] For Format B: all companion comments use the same 4-section skeleton and link back to primary's real `html_url`
+- [ ] For Format B: EVERY companion's `**[SEVERITY-N] ...**` title is IDENTICAL to the primary's title (verbatim - no sub-title, no rewording, no companion-specific angle in the title). The companion's angle goes in the Section 1 plain-English intro instead. Only `[TEST GAP]` companions may use a different marker.
+- [ ] Any recommendation to "add an inline comment / TODO / marker / Javadoc line / placeholder test" is expressed as a ```suggestion``` block containing the exact edited code, NOT as prose describing the comment.
+- [ ] Read Section 1 and Section 2 out loud. If any clause makes you stumble, or if any word could be cut without loss of meaning, rewrite before posting. These sections are what a 0-context reader uses to decide whether to act - they must not carry filler ("In plain terms:", redundant adjectives, negative framing when positive would read faster, or qualifiers that just restate the setup).
