@@ -1,6 +1,6 @@
 ---
 name: pr-review-comments
-description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Two formats - LOW (single code suggestion + concise explanation) and HIGH (architectural diagram + multi-file companion comments).
+description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Three formats - Format A (single code suggestion + concise explanation, LOW), Format B (four-section skeleton with explicit "in this PR" vs "follow-up ticket" split-scope for MEDIUM/HIGH multi-file findings, with ASCII diagrams and multi-file companion comments), and Format C (test coverage gaps).
 ---
 
 # PR Review Comments
@@ -16,11 +16,11 @@ The user provides:
 
 ## Output Formats
 
-Two templates depending on complexity:
+Three templates depending on complexity:
 
-### Format A: Single-target fix (LOW/MEDIUM findings)
+### Format A: Single-target fix (LOW findings, or MEDIUM where the fix is trivially self-contained)
 
-For findings where the fix is one code change in one location.
+For findings where the fix is one code change in one location AND the recommendation does not need to be split between this PR and a follow-up ticket. If either condition fails, use Format B.
 
 Structure:
 1. GitHub suggestion block with the fix
@@ -46,23 +46,150 @@ Rules:
 - No "Recommended fix" section - the suggestion block IS the fix
 - Bound the risk in the description (why it's LOW not HIGH)
 
-### Format B: Multi-file architectural issue (HIGH findings)
+### Format B: Multi-file architectural issue (MEDIUM/HIGH findings)
 
-For findings requiring structural changes across multiple files.
+For findings requiring structural changes across multiple files, or where the recommendation splits between "fix in this PR" and "track in a follow-up ticket."
 
-Structure for the **primary comment** (on the most relevant file/line):
-1. Suggestion block with the key fix for THIS file
-2. Bold severity+title: `**[HIGH-N] - Title**`
-3. Explanation of the two/three gaps that chain together
-4. ASCII diagrams showing: normal flow, attack/failure flow, information loss
-5. TL;DR block: What / Why / Impact / Fix
+**Every Format B comment (primary and companions) uses the same four-section skeleton in this exact order:**
 
-Post **companion comments** on each additional file that needs changes:
-1. Suggestion block with that file's fix (if applicable)
-2. Same bold severity+title (links the comments together)
-3. Link to the primary comment's actual URL (from the `html_url` returned when posting the primary): `See https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}`
+```
+**[SEVERITY-N] Title that captures the defect**
 
-For supplementary code changes too large for a suggestion block, post a companion comment with a fenced code block showing the required changes and a mini ASCII diagram of the data flow that must be threaded through.
+<Section 1: short human-readable description of the issue - 2-5 sentences,
+plain English, "in plain terms" framing. What breaks, when it breaks, why it
+matters. No diagrams here.>
+
+---
+
+**Recommendation summary**
+
+- **In this PR (#TICKET):** <one-line summary of the in-PR change>. <If the
+  fix is small enough to inline as a suggestion, put the ```suggestion``` block
+  INSIDE this bullet.> <If no code change is needed on this file, say so
+  explicitly and point at the file/line where the in-PR fix lands.>
+- **Follow-up ticket (new, or scope-expansion of #TICKET):** <one-line summary
+  of what must be split out and why it does not fit this PR>.
+
+---
+
+**Problem detail**
+
+<Section 3: precise technical description of the defect. Enumerate the gaps
+that chain together, cite exact file:line references, show ASCII diagrams for
+data/control flow, describe the failure scenario end-to-end, and bound
+exploitability.>
+
+---
+
+**Recommendation detail**
+
+<Section 4: expanded version of Section 2.
+
+**In this PR (#TICKET)** - list the specific code changes with file paths and
+what they do. Cross-reference companion comments for the exact suggestions.
+
+**Follow-up ticket (new, or scope-expansion of #TICKET)** - numbered list of
+concrete tasks the ticket must cover before the change described is
+production-safe. Include tests. Include any preconditions on other tickets.>
+```
+
+**Where the ```suggestion``` block lives.**
+- If the in-PR fix is a small, self-contained code change on the file this
+  comment anchors: put the ```suggestion``` block INSIDE the "In this PR"
+  bullet of the Recommendation summary, so the code and its rationale sit
+  together at the top of the comment.
+- If the fix is too large for a suggestion block, or spans multiple
+  non-contiguous edits: describe it in Section 4 (Recommendation detail) with
+  a fenced code block or an ASCII data-flow diagram.
+- If this file needs no code change (e.g., a companion anchoring the
+  follow-up ticket's landing zone): say so explicitly in Section 2 - "no code
+  change at this line" - and point at the file/line where the in-PR fix
+  actually lands.
+- If the in-PR fix is a suggestion inside Section 2, Section 4's "In this PR"
+  entry can be a single line ("see suggestion above") plus any notes on
+  narrower alternatives, follow-up cleanup, or removal timing.
+
+**Companion comment linking.** Post companion comments on each additional
+file. Each companion:
+- Uses the same four-section skeleton.
+- Uses the same `**[SEVERITY-N] ...**` title (with a distinct sub-title if
+  helpful for the companion's specific angle).
+- Ends with: `See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}`
+  (real URL from the primary's `html_url`).
+
+The primary is the comment on the file/line where the defect is most
+concentrated; companions cover other affected files and can also be used to
+"anchor" the follow-up ticket at the driver-side / consumer-side landing zone
+even when no in-PR code change happens there.
+
+**Worked example - companion comment where the in-PR fix IS a suggestion:**
+
+````
+**[MEDIUM-1] Follower loop startup must fail-fast until override substrate lands**
+
+<Section 1 - plain English: 2-5 sentences on what breaks, when, and why it matters.>
+
+---
+
+**Recommendation summary**
+
+- **In this PR:** replace the planner-construction branch with an `IllegalStateException` so `--plugin-xcall-eez-fixpoint-loop-enabled=true` no longer starts:
+
+```suggestion
+      cliOptions.validateEezFixpointLoopOptions();
+      throw new IllegalStateException(
+          "EEZ fixpoint loop cannot be enabled: ...");
+```
+
+- **Follow-up ticket:** described in the primary comment - widen the planner seam, thread `StateOverrideMap`, and delegate to `EezSimulator`. Remove this guard when that lands.
+
+---
+
+**Problem detail**
+
+<Section 3 - precise technical description, file:line citations, ASCII diagram, failure scenario, exploitability bound.>
+
+---
+
+**Recommendation detail**
+
+Notes on the suggestion above:
+- Remove this guard as part of the follow-up ticket, at the same commit that lands the state-override wiring.
+- <Any narrower alternatives, testing notes, etc.>
+
+See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}
+````
+
+**Worked example - companion comment where NO in-PR code change is needed on this file (follow-up anchor only):**
+
+````
+**[MEDIUM-1] `Optional.empty()` overrides are the driver-side half of the gap**
+
+<Section 1 - plain English: why this line matters even though nothing changes here.>
+
+---
+
+**Recommendation summary**
+
+- **In this PR:** no code change at this line - the in-PR fix is the startup guard in `XCallPlugin.java` (see companion). This L579 site is annotated only.
+- **Follow-up ticket:** thread a `StateOverrideMap` through both this call and the L534 first-pass call, sourced from the planner's return value (planner seam must widen).
+
+---
+
+**Problem detail**
+
+<Section 3 - why Optional.empty() defeats even a corrected planner, cross-reference to the mirror site.>
+
+---
+
+**Recommendation detail**
+
+Follow-up work required at this seam:
+
+<fenced code block or ASCII diagram of the data-flow that must be threaded through>
+
+See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}
+````
 
 ### Format C: Test coverage gap (`[TEST GAP]`)
 
@@ -82,17 +209,21 @@ Anchor on the test file (last line or near the gap) rather than production code.
 ## Procedure
 
 1. **Identify the finding** from the review report
-2. **Classify**: single-target (Format A) or multi-file (Format B)
+2. **Classify**:
+   - Format A (single-target): fix is one code change in one location, no split between "this PR" and "follow-up ticket."
+   - Format B (multi-file / split-scope): defect spans multiple files OR the recommendation naturally splits into "in this PR" (small, contained) plus "follow-up ticket" (architectural). Use Format B whenever you'd otherwise need to explain "this fix is only partial" - the 4-section skeleton makes the split explicit.
+   - Format C: test coverage gap.
 3. **Locate the exact file + line** in the PR diff where the comment anchors
    - Use `gh api repos/{owner}/{repo}/pulls/{pr}/files` to get the diff
    - Use `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` if needed
-4. **STOP - Show the user the draft** comment(s) and target file/line for approval before posting. Display:
+4. **Decide the split** (Format B only): before drafting, name the in-PR change (concrete, small, landable now) and the follow-up ticket scope (architectural, out-of-scope for this PR). If you cannot cleanly name both, either widen Section 4's "In this PR" bullet or step down to Format A.
+5. **STOP - Show the user the draft** comment(s) and target file/line for approval before posting. Display:
    - Target: `{path}:{line}`
-   - Format: A or B
-   - Full comment body (rendered)
+   - Format: A, B, or C
+   - Full comment body (rendered, including all four sections for Format B)
    - For Format B: list all companion comment targets
    - Wait for explicit user approval before proceeding
-5. **Post via GitHub API** (only after user approval):
+6. **Post via GitHub API** (only after user approval):
    ```bash
    gh api repos/{owner}/{repo}/pulls/{pr}/comments \
      -f body="<comment>" \
@@ -101,7 +232,7 @@ Anchor on the test file (last line or near the gap) rather than production code.
      -f side="RIGHT" \
      -f commit_id="<sha>"
    ```
-6. For Format B, post companion comments on secondary files, linking back to the primary (also requires approval in step 4)
+7. For Format B, post the primary first, capture its `html_url`, then substitute that URL into each companion's "See primary comment:" footer before posting the companions.
 
 ## Writing Rules
 
@@ -111,7 +242,11 @@ Anchor on the test file (last line or near the gap) rather than production code.
 - **Diagrams over prose**: for anything involving data flow, control flow, or timing - draw it
 - **Suggestion blocks must compile**: test mentally that the suggestion is syntactically valid
 - **One finding = one comment thread**: don't combine findings
-- **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2"). Ticket references like `#4332` are fine when you intend the link.
+- **Split scope explicitly**: for any non-trivial finding, name what lands in THIS PR vs what splits to a follow-up ticket. Reviewers should never have to guess whether a recommendation is blocking merge.
+- **Section order is fixed for Format B**: title+human summary → recommendation summary → problem detail → recommendation detail. Do not reorder. Section 1 is plain English; save citations, diagrams, and failure scenarios for Section 3.
+- **Suggestion block placement (Format B)**: if the in-PR fix is a small self-contained code change on the file this comment anchors, put the ```suggestion``` block INSIDE the "In this PR" bullet of Section 2, not in Section 4. Section 4 then just references it.
+- **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2") EXCEPT when quoting a real ticket reference like `#4342`.
+- **Preamble discipline for suggestion blocks**: never precede a ```suggestion``` block with a "Suggested code:" or "Here is the fix:" preamble - the block is self-explanatory. Any accompanying explanation goes AFTER as "Notes on the suggestion above: ..." if needed.
 
 ## GitHub API Details
 
@@ -166,4 +301,7 @@ StreamManager              EezDisconnectAborter
 - [ ] Commit SHA matches the PR head
 - [ ] Title captures the DEFECT (not the fix)
 - [ ] Risk is bounded in the description
-- [ ] For Format B: all companion comments link back to primary
+- [ ] For Format B: all four sections present in the fixed order (title+summary → recommendation summary → problem detail → recommendation detail), separated by `---` rules
+- [ ] For Format B: Recommendation summary explicitly names both "In this PR (#TICKET)" and "Follow-up ticket" bullets
+- [ ] For Format B: if there is a code suggestion, it lives inside the "In this PR" bullet of Section 2 (not in Section 4), and has no "Suggested code:" preamble
+- [ ] For Format B: all companion comments use the same 4-section skeleton and link back to primary's real `html_url`
