@@ -1,6 +1,6 @@
 ---
 name: pr-review-comments
-description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Three formats - Format A (single code suggestion + concise explanation, LOW), Format B (concise what's-wrong + Fix with a collapsed detail block and stub companions, explicit "in this PR" vs "follow-up ticket" split for MEDIUM/HIGH multi-file findings), and Format C (test coverage gaps).
+description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Three formats - Format A (single code suggestion + concise explanation, LOW), Format B (concise what's-wrong + Recommended fix with a collapsed detail block and stub companions, explicit "in this PR" vs "follow-up ticket" split for MEDIUM/HIGH multi-file findings), and Format C (test coverage gaps).
 ---
 
 # PR Review Comments
@@ -58,24 +58,26 @@ For findings requiring structural changes across multiple files, or where the re
 <What's wrong: 2-4 sentences, plain English. What breaks, when it breaks, why
 it matters. No citations, no diagrams.>
 
-**Fix**
+**Recommended fix**
 
 - **In this PR (#TICKET, omit if none):** <one-line summary of the in-PR change, then the
   ```suggestion``` block if the fix is a small self-contained change on this
   file. If no code change is needed on this file, say so and point at the
   file/line where the in-PR fix lands.>
-- **Follow-up ticket (new, or scope-expansion of #TICKET):** <one line: what
-  splits out and why it does not fit this PR>
+- **Follow-up ticket (#ISSUE):** <one line: what splits out and why it does
+  not fit this PR>
+
+---
 
 <details>
-<summary>Problem detail and follow-up scope</summary>
+<summary><b>Problem detail and follow-up scope</b></summary>
 
 <Citations (file:line), ASCII diagram, end-to-end failure scenario,
 exploitability bound, the full description of an in-PR fix too large for a
 suggestion block, and the numbered follow-up task list the ticket must
 cover (include tests and preconditions on other tickets). Nothing here
-restates the Fix bullets or the what's-wrong intro - this block only adds
-evidence and task breakdown.>
+restates the Recommended fix bullets or the what's-wrong intro - this block
+only adds evidence and task breakdown.>
 
 </details>
 ````
@@ -95,10 +97,19 @@ evidence and task breakdown.>
   button and scanning reviewers must see it above the fold.
 
 **`<details>` conventions.**
-- Summary line is always `Problem detail and follow-up scope`.
+- Summary line is always `<b>Problem detail and follow-up scope</b>` - bold
+  via `<b>` tags, since markdown `**` does not render inside `<summary>`.
+- A `---` rule sits above the `<details>` block, separating it from the
+  Recommended fix section.
 - Leave a blank line after `<summary>...</summary>` and before `</details>`
   so GitHub renders the markdown inside.
 - Diagrams live only inside `<details>`.
+
+**Follow-up ticket linking.** The Follow-up ticket bullet links the specific
+GitHub issue that tracks the split-out work. `#N` auto-links within the same
+repo; use the full issue URL for a cross-repo ticket. If the issue does not
+exist yet, create it after the user approves the draft (Procedure step 5) and
+before posting, then substitute the real number.
 
 **Companion comments.** Post a stub on each additional file:
 
@@ -112,7 +123,7 @@ evidence and task breakdown.>
 See primary comment: https://github.com/{owner}/{repo}/pull/{pr}#discussion_r{id}
 ````
 
-- No Fix section, no `<details>`, no problem detail. Site-specific reasoning
+- No Recommended fix section, no `<details>`, no problem detail. Site-specific reasoning
   that needs depth goes into the primary's `<details>` block instead.
 - Title is the primary's `**[SEVERITY-N] ...**` title verbatim - no
   sub-title, no rewording. A reader scanning the PR must instantly recognize
@@ -136,13 +147,15 @@ in-PR code change happens there.
 
 Once an operator flips `--plugin-xcall-eez-fixpoint-loop-enabled=true`, any inbound cross-chain call with a nested callback fails. The follower's subsequent simulation is sent from the remote wire caller, but the L2 contract accepts it only from `SYSTEM_ADDRESS` with exact `msg.value`. The first pass has the mirror-image problem: no source-proxy derivation, no dispatcher-code install, no static-call enforcement.
 
-**Fix**
+**Recommended fix**
 
 - **In this PR (#4333):** fail startup when `--plugin-xcall-eez-fixpoint-loop-enabled=true` until the follower-pass override substrate is threaded through the loop seam. See `XCallPlugin.java:254` companion for the exact suggestion.
-- **Follow-up ticket (new, or scope-expansion of #4342):** wire both follower passes through the execution contexts `EezSimulator` already implements - too large for this PR; task breakdown in the details block.
+- **Follow-up ticket (#4350):** wire both follower passes through the execution contexts `EezSimulator` already implements - too large for this PR; task breakdown in the details block.
+
+---
 
 <details>
-<summary>Problem detail and follow-up scope</summary>
+<summary><b>Problem detail and follow-up scope</b></summary>
 
 Two gaps chain together:
 
@@ -210,12 +223,12 @@ Anchor on the test file (last line or near the gap) rather than production code.
 1. **Identify the finding** from the review report
 2. **Classify**:
    - Format A (single-target): fix is one code change in one location, no split between "this PR" and "follow-up ticket."
-   - Format B (multi-file / split-scope): defect spans multiple files OR the recommendation naturally splits into "in this PR" (small, contained) plus "follow-up ticket" (architectural). Use Format B whenever you'd otherwise need to explain "this fix is only partial" - the **Fix** section's two bullets make the split explicit.
+   - Format B (multi-file / split-scope): defect spans multiple files OR the recommendation naturally splits into "in this PR" (small, contained) plus "follow-up ticket" (architectural). Use Format B whenever you'd otherwise need to explain "this fix is only partial" - the **Recommended fix** section's two bullets make the split explicit.
    - Format C: test coverage gap.
 3. **Locate the exact file + line** in the PR diff where the comment anchors
    - Use `gh api repos/{owner}/{repo}/pulls/{pr}/files` to get the diff
    - Use `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` if needed
-4. **Decide the split** (Format B only): before drafting, name the in-PR change (concrete, small, landable now) and the follow-up ticket scope (architectural, out-of-scope for this PR). If you cannot cleanly name both, either expand the in-PR scope until it stands alone (making the "In this PR" bullet the whole fix) or step down to Format A.
+4. **Decide the split** (Format B only): before drafting, name the in-PR change (concrete, small, landable now) and the follow-up ticket scope (architectural, out-of-scope for this PR). If you cannot cleanly name both, either expand the in-PR scope until it stands alone (making the "In this PR" bullet the whole fix) or step down to Format A. Identify the GitHub issue the Follow-up ticket bullet will link; if none exists, plan to create it after user approval in step 5 and before posting.
 5. **STOP - Show the user the draft** comment(s) and target file/line for approval before posting. Display:
    - Target: `{path}:{line}`
    - Format: A, B, or C
@@ -236,7 +249,7 @@ Anchor on the test file (last line or near the gap) rather than production code.
 ## Writing Rules
 
 - **Concise**: reader decides in <30 seconds whether to act
-- **Every word earns its place above the fold (Format B).** Everything outside `<details>` - title, what's-wrong intro, and **Fix** - is what a 0-context reader uses to decide whether to act. Depth belongs inside `<details>`. Apply this discipline hard:
+- **Every word earns its place above the fold (Format B).** Everything outside `<details>` - title, what's-wrong intro, and **Recommended fix** - is what a 0-context reader uses to decide whether to act. Depth belongs inside `<details>`. Apply this discipline hard:
   - **No "In plain terms:", "Basically,", "Essentially," preambles.** The section is plain English by convention. Just state the defect.
   - **No adjectives that repeat the setup.** "Silent narrowing" when the whole point is that it's silent → drop "silent". "Weak size-only assertions" when the whole comment argues weakness → drop "Weak".
   - **Positive framing over negative.** "so X can find them" beats "otherwise X cannot find them". "no `SimulateResponse` sent" beats "without sending any `SimulateResponse`".
@@ -252,9 +265,9 @@ Anchor on the test file (last line or near the gap) rather than production code.
 - **Suggestion blocks must compile**: test mentally that the suggestion is syntactically valid
 - **One finding = one comment thread**: don't combine findings
 - **Split scope explicitly**: for any non-trivial finding, name what lands in THIS PR vs what splits to a follow-up ticket. Reviewers should never have to guess whether a recommendation is blocking merge.
-- **Structure is fixed for Format B**: title + what's-wrong intro → **Fix** → `<details>`. Do not reorder. The intro is plain English; save citations, diagrams, and failure scenarios for the `<details>` block.
-- **No duplication across the fold (Format B)**: each point appears exactly once - above the fold or inside `<details>`, never both. The `<details>` block adds evidence and the follow-up task breakdown; it never restates the Fix bullets.
-- **Suggestion block placement (Format B)**: if the in-PR fix is a small self-contained code change on the file this comment anchors, put the ```suggestion``` block inside the "In this PR" bullet of **Fix**. Never inside `<details>`.
+- **Structure is fixed for Format B**: title + what's-wrong intro → **Recommended fix** → `---` + `<details>`. Do not reorder. The intro is plain English; save citations, diagrams, and failure scenarios for the `<details>` block.
+- **No duplication across the fold (Format B)**: each point appears exactly once - above the fold or inside `<details>`, never both. The `<details>` block adds evidence and the follow-up task breakdown; it never restates the Recommended fix bullets.
+- **Suggestion block placement (Format B)**: if the in-PR fix is a small self-contained code change on the file this comment anchors, put the ```suggestion``` block inside the "In this PR" bullet of **Recommended fix**. Never inside `<details>`.
 - **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2") EXCEPT when quoting a real ticket reference like `#4342`.
 - **Preamble discipline for suggestion blocks**: never precede a ```suggestion``` block with a "Suggested code:" or "Here is the fix:" preamble - the block is self-explanatory. Any accompanying explanation goes AFTER as "Notes on the suggestion above: ..." if needed.
 - **Inline-comment recommendations MUST be suggestion blocks**: if the recommendation is "add an inline comment / TODO / marker / Javadoc line", render it as a ```suggestion``` block containing the exact edited code - never as prose that describes the comment. The reader should be one click away from applying the change. This includes:
@@ -317,9 +330,10 @@ StreamManager              EezDisconnectAborter
 - [ ] Commit SHA matches the PR head
 - [ ] Title captures the DEFECT (not the fix)
 - [ ] Risk is bounded in the description
-- [ ] For Format B primaries: above the fold contains only the title, the what's-wrong intro (2-4 sentences), and **Fix** with both "In this PR (#TICKET)" and "Follow-up ticket" bullets
-- [ ] For Format B primaries: any code suggestion lives inside the "In this PR" bullet of **Fix** (never inside `<details>`), with no "Suggested code:" preamble
-- [ ] For Format B primaries: `<details>` block present with summary line `Problem detail and follow-up scope`, a blank line after `</summary>` and before `</details>`, and no content duplicated from above the fold
-- [ ] For Format B: every companion is a stub - the primary's `**[SEVERITY-N] ...**` title verbatim (no sub-title, no rewording; the companion's angle goes in the 1-2 sentence intro), an optional suggestion block, and a `See primary comment:` link using the primary's real `html_url`. No Fix section, no `<details>`. Only `[TEST GAP]` companions may use a different marker.
+- [ ] For Format B primaries: above the fold contains only the title, the what's-wrong intro (2-4 sentences), and **Recommended fix** with both "In this PR (#TICKET)" and "Follow-up ticket" bullets
+- [ ] For Format B primaries: the "Follow-up ticket" bullet links a real GitHub issue (`#N` same-repo, full URL cross-repo)
+- [ ] For Format B primaries: any code suggestion lives inside the "In this PR" bullet of **Recommended fix** (never inside `<details>`), with no "Suggested code:" preamble
+- [ ] For Format B primaries: `<details>` block present with a `---` rule above it, summary line `<b>Problem detail and follow-up scope</b>`, a blank line after `</summary>` and before `</details>`, and no content duplicated from above the fold
+- [ ] For Format B: every companion is a stub - the primary's `**[SEVERITY-N] ...**` title verbatim (no sub-title, no rewording; the companion's angle goes in the 1-2 sentence intro), an optional suggestion block, and a `See primary comment:` link using the primary's real `html_url`. No Recommended fix section, no `<details>`. Only `[TEST GAP]` companions may use a different marker.
 - [ ] Any recommendation to "add an inline comment / TODO / marker / Javadoc line / placeholder test" is expressed as a ```suggestion``` block containing the exact edited code, NOT as prose describing the comment.
 - [ ] Read the above-the-fold text out loud. If any clause makes you stumble, or if any word could be cut without loss of meaning, rewrite before posting. It must not carry filler ("In plain terms:", redundant adjectives, negative framing when positive would read faster, or qualifiers that just restate the setup).
