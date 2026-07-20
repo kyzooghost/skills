@@ -1,12 +1,14 @@
 ---
 name: grill-plan
-description: Use when the user asks to grill, interrogate, pressure-test, or relentlessly interview them about a plan until requirements, tradeoffs, dependencies, and implementation decisions are clear.
+description: Use when the user asks to grill, interrogate, interview, or pressure-test a plan for unresolved architecture, product, design, UX, security, or compatibility decisions before implementation.
 ---
 
 # Grill Plan
 
 Read and follow `references/command.md`.
 
-Ask questions one at a time and number each question with an ordinal label, e.g. `1st Q`, `2nd Q`, `3rd Q`, `50th Q`.
+Treat human attention as scarce. Before asking anything, inspect the plan and local codebase, then apply the command's question gate.
 
-After each answer, immediately modify the plan doc to capture the resolved decision, tradeoff, or open follow-up before asking the next question. If a question can be answered by inspecting the local codebase, inspect it instead of asking the user.
+Ask qualifying questions one at a time with ordinal labels. After every answer, immediately update the active plan or design document before continuing.
+
+Stop when no consequential ambiguity requires human authority. Do not expand the interview to settle safely delegated implementation details.
