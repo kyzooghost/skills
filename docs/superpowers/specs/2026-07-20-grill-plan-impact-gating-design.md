@@ -88,7 +88,7 @@ At the estimated upper bound, reassess whether remaining questions justify their
 - The consequences of leaving them unresolved.
 - A recommendation to stop or continue.
 
-Continue beyond 40 only after the user accepts the recommendation. Stop immediately if the user asks to stop or shows attention fatigue, then produce the normal handoff with residual risks.
+Continue beyond 40 only when the user explicitly chooses to continue after seeing the reassessment. Stop immediately if the user asks to stop or shows attention fatigue, then produce the normal handoff with residual risks.
 
 ## Question Gate
 
