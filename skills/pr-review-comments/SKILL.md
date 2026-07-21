@@ -299,16 +299,13 @@ Anchor on the test file (last line or near the gap) rather than production code.
    - If approved, create the GitHub issue, capture its real number and URL, replace the pending marker in the approved B-split body, then proceed to posting.
    - If declined, do not create or post; revise to B-current or use an existing issue, then return to step 5 for fresh approval of the complete rendered body.
    - If creation fails, report the GitHub error and stop before posting any comment that references the missing issue.
-7. **Post through the existing gh API command** only after required approvals and, for B-split, a real issue link.
-   ```bash
-   gh api repos/{owner}/{repo}/pulls/{pr}/comments \
-     -f body="<comment>" \
-     -f path="<file>" \
-     -F line=<line> \
-     -f side="RIGHT" \
-     -f commit_id="<sha>"
-   ```
-8. **Post Format B companions** after the primary using its real `html_url`.
+7. **Post through the deterministic helper** only after required approvals and, for B-split, a real issue link:
+   - Write the approved rendered primary and companion bodies verbatim to a JSON spec. Each companion body must contain exactly one `{primary_url}` token in its final `See primary comment:` footer.
+   - Run `python3 skills/pr-review-comments/scripts/post_review_comments.py --spec <spec.json> --dry-run` and inspect the validated targets.
+   - Run the same command without `--dry-run` only after the dry-run output matches the approved draft.
+   - The helper invokes `gh api` through argument arrays, captures the primary response's real `html_url`, substitutes it into companions, and verifies every returned body, path, line, and discussion URL before continuing.
+   - Never build Markdown bodies with an unquoted shell heredoc, backtick interpolation, or a shell command string. If the helper fails after posting a primary, stop and report its URL; do not retry automatically.
+8. **Post Format B companions** through the helper after the primary response passes validation. The helper inserts the primary's real `html_url` and rejects unresolved placeholders.
 
 ## Writing Rules
 
@@ -342,7 +339,35 @@ Anchor on the test file (last line or near the gap) rather than production code.
   - Extending a class-level Javadoc block (include the full replacement Javadoc, or - if the anchor lands mid-Javadoc - the enclosing paragraph).
 - **When a comment recommends "annotate with a TODO/FIXME/marker", it MUST be a suggestion**: prose like "add a TODO(FOO) here noting X" is not enough - the reader has to translate that into an edit themselves, which is friction. Always ship the ready-to-apply diff.
 
+## Deterministic posting helper
+
+The helper accepts a JSON spec so Markdown never passes through shell parsing:
+
+```json
+{
+  "repo": "owner/repository",
+  "pr": 29,
+  "commit": "<40-character-head-sha>",
+  "primary": {
+    "path": "src/Primary.kt",
+    "line": 43,
+    "body": "<approved primary body>"
+  },
+  "companions": [
+    {
+      "path": "src/Companion.kt",
+      "line": 27,
+      "body": "<same title and approved companion body>\\n\\nSee primary comment: {primary_url}"
+    }
+  ]
+}
+```
+
+The helper validates all targets before mutation, rejects `$primary_url`, angle-bracket primary-link placeholders, and unresolved `{owner}`, `{repo}`, `{pr}`, or `{id}` markers, then stops on the first API response mismatch. Its unit tests use a fake `gh` runner and assert exact Markdown preservation, URL substitution, dry-run isolation, and fail-fast behavior.
+
 ## GitHub API Details
+
+The helper implements these fields through an argument-list invocation. This is reference material for the helper, not a manual posting path; do not paste a shell-built body into `gh api`.
 
 For review comments on specific lines:
 ```bash
