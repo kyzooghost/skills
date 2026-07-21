@@ -159,7 +159,40 @@ concentrated; companions cover other affected files and can also "anchor" the
 follow-up ticket at the driver-side / consumer-side landing zone even when no
 in-PR code change happens there.
 
-**Worked example - primary:**
+**Worked example - B-current primary:**
+
+````
+**[LOW-1] Kotlin internal widens session state to public JVM API**
+
+The migrated state holders and coordinator helpers are marked `internal`, but Kotlin emits them as public JVM classes, fields, and methods. Trusted Java code can mutate session phase or invoke timeout hooks outside the coordinator's intended boundary, causing abort or liveness failures. No remote path reaches these members, so severity is LOW.
+
+**Recommended fix**
+
+- **In this PR:** restore package-private JVM visibility for the migrated session internals and add compiled-bytecode regression coverage.
+
+---
+
+<details>
+<summary><b>Problem detail and implementation scope</b></summary>
+
+The Java baseline emits package-private classes, fields, and methods. Kotlin `internal` is module-level source visibility, so the migrated class files expose public JVM symbols.
+
+```
+trusted extension -> session(id).phase = COMMITTING
+                  -> timeout and abort guards return
+```
+
+**In-PR task list:**
+1. Restore package-private bytecode visibility for the state holder, abort helper, session accessor, timeout hook, and mutable state.
+2. Assert the compiled modifiers for every migrated symbol.
+3. Keep package-level coordinator tests proving intended internal access still works.
+
+</details>
+````
+
+This remains B-current even though the production fix and regression coverage span multiple files. No qualifying split evidence exists, so the skill must not create a follow-up issue.
+
+**Worked example - B-split primary:**
 
 ````
 **[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
@@ -168,13 +201,19 @@ Once an operator flips `--plugin-xcall-eez-fixpoint-loop-enabled=true`, any inbo
 
 **Recommended fix**
 
-- **In this PR (#4333):** fail startup when `--plugin-xcall-eez-fixpoint-loop-enabled=true` until the follower-pass override substrate is threaded through the loop seam. See `XCallPlugin.java:254` companion for the exact suggestion.
-- **Follow-up ticket (#4350):** wire both follower passes through the execution contexts `EezSimulator` already implements - too large for this PR; task breakdown in the details block.
+- **In this PR (#4333):** fail startup when `--plugin-xcall-eez-fixpoint-loop-enabled=true` until the follower-pass override substrate is threaded through the loop seam, and add a regression test asserting that enabled startup is rejected. See the `XCallPlugin.java:254` companion for the exact production suggestion.
+- **Follow-up ticket (#4350):** wire both follower passes through the execution contexts `EezSimulator` already implements; #4333 limits this PR to the startup guard, and the wiring depends on #4342. Task breakdown in the details block.
 
 ---
 
 <details>
 <summary><b>Problem detail and implementation scope</b></summary>
+
+**Split evidence.** The user explicitly confirmed that #4333 limits this PR to refusing unsafe feature activation. #4350 owns the execution-context wiring and depends on #4342, so it cannot land safely here.
+
+**In-PR task list:**
+1. Add startup validation that rejects the enabled fixpoint-loop flag while the follower execution contexts remain unwired.
+2. Add a regression test that enables the flag and asserts startup fails with the actionable validation error.
 
 Two gaps chain together:
 
@@ -203,7 +242,7 @@ simulator.simulateCall(nextCall, Optional.empty())
 </details>
 ````
 
-**Worked example - companion carrying the in-PR fix:**
+**Worked example - B-split companion carrying the in-PR fix:**
 
 ````
 **[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
