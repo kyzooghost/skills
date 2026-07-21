@@ -1,6 +1,6 @@
 ---
 name: pr-review-comments
-description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Three formats - Format A (single code suggestion + concise explanation, LOW), Format B (concise what's-wrong + Recommended fix with a collapsed detail block and stub companions, explicit "in this PR" vs "follow-up ticket" split for MEDIUM/HIGH multi-file findings), and Format C (test coverage gaps).
+description: Transform security review findings into targeted GitHub PR review comments. Takes a single finding from a differential review report and produces actionable, file-targeted PR review comments using the GitHub API (gh). Use when the user says "/pr-review-comments", "post review comments", "turn findings into PR comments", "post this finding", or asks to convert a security/code review finding into inline PR comments. Three formats - Format A (single code suggestion + concise explanation), Format B (concise multi-file or structural thread with B-current default and evidence-backed B-split scope), and Format C (standalone test coverage gaps).
 ---
 
 # PR Review Comments
@@ -46,11 +46,18 @@ Rules:
 - No "Recommended fix" section - the suggestion block IS the fix
 - Bound the risk in the description (why it's LOW not HIGH)
 
-### Format B: Multi-file architectural issue (MEDIUM/HIGH findings)
+### Format B: Multi-file or structural finding
 
-For findings requiring structural changes across multiple files, or where the recommendation splits between "fix in this PR" and "track in a follow-up ticket."
+Use Format B when the finding spans multiple files, needs non-contiguous edits, requires structural explanation, or has any evidence-backed split recommendation. The multi-file and structural paths describe comment shape; an evidence-backed split also requires Format B's two-scope structure even when its current-PR mitigation has one target.
 
-**Primary comment - three parts, fixed order:**
+**Choose one delivery mode before drafting:**
+
+- **B-current (default):** the complete production fix and regression coverage land in this PR. Multi-file scope, structural work, lack of a suggestion block, additional tests, and LOW severity do not justify a follow-up ticket by themselves.
+- **B-split (exception):** part of the fix cannot reasonably land in this PR because the user, maintainer, or governing ticket excludes it; an unmet prerequisite blocks it; it belongs to another repository, owner, release, or deployment boundary; or required test infrastructure does not exist and cannot be added within the current ticket. Cite the qualifying evidence in the draft. "Too large," "architectural," and "better as follow-up" do not qualify without a concrete blocker.
+
+If no qualifying evidence exists, use B-current.
+
+**B-current primary - three parts, fixed order:**
 
 ````
 **[SEVERITY-N] Title that captures the defect**
@@ -60,24 +67,41 @@ it matters. No citations, no diagrams.>
 
 **Recommended fix**
 
-- **In this PR (#TICKET, omit if none):** <one-line summary of the in-PR change, then the
-  ```suggestion``` block if the fix is a small self-contained change on this
-  file. If no code change is needed on this file, say so and point at the
-  file/line where the in-PR fix lands.>
-- **Follow-up ticket (#ISSUE):** <one line: what splits out and why it does
-  not fit this PR>
+- **In this PR (#TICKET, omit if none):** <the complete production fix and regression coverage; include a ```suggestion``` block here when the fix is a small self-contained change on this file; otherwise point to the file or companion where the change lands>
 
 ---
 
 <details>
-<summary><b>Problem detail and follow-up scope</b></summary>
+<summary><b>Problem detail and implementation scope</b></summary>
 
-<Citations (file:line), ASCII diagram, end-to-end failure scenario,
-exploitability bound, the full description of an in-PR fix too large for a
-suggestion block, and the numbered follow-up task list the ticket must
-cover (include tests and preconditions on other tickets). Nothing here
-restates the Recommended fix bullets or the what's-wrong intro - this block
-only adds evidence and task breakdown.>
+<Citations, failure scenario, exploitability bound, the full fix description
+when it does not fit above the fold, and a numbered In-PR task list. Nothing
+here restates the Recommended fix bullet or the what's-wrong intro.>
+
+</details>
+````
+
+**B-split primary - three parts, fixed order:**
+
+````
+**[SEVERITY-N] Title that captures the defect**
+
+<What's wrong: 2-4 sentences, plain English. What breaks, when it breaks, why
+it matters. No citations, no diagrams.>
+
+**Recommended fix**
+
+- **In this PR (#TICKET, omit if none):** <a safe and independently complete in-PR change; include a ```suggestion``` block here when the change is small and self-contained on this file; otherwise point to the file or companion where the change lands>
+- **Follow-up ticket (#ISSUE):** <deferred work and the concrete blocker that prevents it from landing in this PR>
+
+---
+
+<details>
+<summary><b>Problem detail and implementation scope</b></summary>
+
+<Citations, failure scenario, exploitability bound, cited split evidence,
+and separate numbered task lists for the current PR and follow-up ticket.
+Nothing here restates the Recommended fix bullets or the what's-wrong intro.>
 
 </details>
 ````
@@ -97,19 +121,14 @@ only adds evidence and task breakdown.>
   button and scanning reviewers must see it above the fold.
 
 **`<details>` conventions.**
-- Summary line is always `<b>Problem detail and follow-up scope</b>` - bold
-  via `<b>` tags, since markdown `**` does not render inside `<summary>`.
-- A `---` rule sits above the `<details>` block, separating it from the
-  Recommended fix section.
-- Leave a blank line after `<summary>...</summary>` and before `</details>`
-  so GitHub renders the markdown inside.
+- Summary line is always `<b>Problem detail and implementation scope</b>` - bold via `<b>` tags, since markdown `**` does not render inside `<summary>`.
+- A `---` rule sits above the `<details>` block, separating it from the Recommended fix section.
+- Leave a blank line after `<summary>...</summary>` and before `</details>` so GitHub renders the markdown inside.
 - Diagrams live only inside `<details>`.
 
-**Follow-up ticket linking.** The Follow-up ticket bullet links the specific
-GitHub issue that tracks the split-out work. `#N` auto-links within the same
-repo; use the full issue URL for a cross-repo ticket. If the issue does not
-exist yet, create it after the user approves the draft (Procedure step 5) and
-before posting, then substitute the real number.
+**Regression coverage.** Tests that prove a production finding stays fixed are part of the current PR by default. Defer them only in B-split when the required harness or prerequisite does not exist and cannot be added within the current ticket; cite that blocker. Use Format C when the finding itself is solely a test gap.
+
+**Follow-up ticket linking (B-split only).** Link the specific GitHub issue that tracks the evidence-backed deferred work. `#N` auto-links within the same repo; use the full issue URL for a cross-repo ticket. If no issue exists, first obtain approval for the review-comment draft, then show the proposed issue title and body and request separate approval to create it. Approval of the review-comment draft does not authorize issue creation. If creation is approved, create the issue, capture its real number and URL, replace the pending marker in the approved B-split body, and then post. If creation is declined, do not create the issue or post the split comment; revise to B-current or use an existing issue supplied by the user, then return to the review-comment draft gate for fresh approval of the complete rendered body. If creation fails, report the error and stop without posting a comment that references the missing issue.
 
 **Companion comments.** Post a stub on each additional file:
 
@@ -140,7 +159,40 @@ concentrated; companions cover other affected files and can also "anchor" the
 follow-up ticket at the driver-side / consumer-side landing zone even when no
 in-PR code change happens there.
 
-**Worked example - primary:**
+**Worked example - B-current primary:**
+
+````
+**[LOW-1] Kotlin internal widens session state to public JVM API**
+
+The migrated state holders and coordinator helpers are marked `internal`, but Kotlin emits them as public JVM classes, fields, and methods. Trusted Java code can mutate session phase or invoke timeout hooks outside the coordinator's intended boundary, causing abort or liveness failures. No remote path reaches these members, so severity is LOW.
+
+**Recommended fix**
+
+- **In this PR:** restore package-private JVM visibility for the migrated session internals and add compiled-bytecode regression coverage.
+
+---
+
+<details>
+<summary><b>Problem detail and implementation scope</b></summary>
+
+The Java baseline emits package-private classes, fields, and methods. Kotlin `internal` is module-level source visibility, so the migrated class files expose public JVM symbols.
+
+```
+trusted extension -> session(id).phase = COMMITTING
+                  -> timeout and abort guards return
+```
+
+**In-PR task list:**
+1. Restore package-private bytecode visibility for the state holder, abort helper, session accessor, timeout hook, and mutable state.
+2. Assert the compiled modifiers for every migrated symbol.
+3. Keep package-level coordinator tests proving intended internal access still works.
+
+</details>
+````
+
+This remains B-current even though the production fix and regression coverage span multiple files. No qualifying split evidence exists, so the skill must not create a follow-up issue.
+
+**Worked example - B-split primary:**
 
 ````
 **[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
@@ -149,13 +201,19 @@ Once an operator flips `--plugin-xcall-eez-fixpoint-loop-enabled=true`, any inbo
 
 **Recommended fix**
 
-- **In this PR (#4333):** fail startup when `--plugin-xcall-eez-fixpoint-loop-enabled=true` until the follower-pass override substrate is threaded through the loop seam. See `XCallPlugin.java:254` companion for the exact suggestion.
-- **Follow-up ticket (#4350):** wire both follower passes through the execution contexts `EezSimulator` already implements - too large for this PR; task breakdown in the details block.
+- **In this PR (#4333):** fail startup when `--plugin-xcall-eez-fixpoint-loop-enabled=true` until the follower-pass override substrate is threaded through the loop seam, and add a regression test asserting that enabled startup is rejected. See the `XCallPlugin.java:254` companion for the exact production suggestion.
+- **Follow-up ticket (#4350):** wire both follower passes through the execution contexts `EezSimulator` already implements; #4333 limits this PR to the startup guard, and the wiring depends on #4342. Task breakdown in the details block.
 
 ---
 
 <details>
-<summary><b>Problem detail and follow-up scope</b></summary>
+<summary><b>Problem detail and implementation scope</b></summary>
+
+**Split evidence.** The user explicitly confirmed that #4333 limits this PR to refusing unsafe feature activation. #4350 owns the execution-context wiring and depends on #4342, so it cannot land safely here.
+
+**In-PR task list:**
+1. Add startup validation that rejects the enabled fixpoint-loop flag while the follower execution contexts remain unwired.
+2. Add a regression test that enables the flag and asserts startup fails with the actionable validation error.
 
 Two gaps chain together:
 
@@ -184,7 +242,7 @@ simulator.simulateCall(nextCall, Optional.empty())
 </details>
 ````
 
-**Worked example - companion carrying the in-PR fix:**
+**Worked example - B-split companion carrying the in-PR fix:**
 
 ````
 **[MEDIUM-1] Follower loop bypasses the required proxy and system-address execution contexts**
@@ -220,22 +278,28 @@ Anchor on the test file (last line or near the gap) rather than production code.
 
 ## Procedure
 
-1. **Identify the finding** from the review report
-2. **Classify**:
-   - Format A (single-target): fix is one code change in one location, no split between "this PR" and "follow-up ticket."
-   - Format B (multi-file / split-scope): defect spans multiple files OR the recommendation naturally splits into "in this PR" (small, contained) plus "follow-up ticket" (architectural). Use Format B whenever you'd otherwise need to explain "this fix is only partial" - the **Recommended fix** section's two bullets make the split explicit.
-   - Format C: test coverage gap.
-3. **Locate the exact file + line** in the PR diff where the comment anchors
-   - Use `gh api repos/{owner}/{repo}/pulls/{pr}/files` to get the diff
-   - Use `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` if needed
-4. **Decide the split** (Format B only): before drafting, name the in-PR change (concrete, small, landable now) and the follow-up ticket scope (architectural, out-of-scope for this PR). If you cannot cleanly name both, either expand the in-PR scope until it stands alone (making the "In this PR" bullet the whole fix) or step down to Format A. Identify the GitHub issue the Follow-up ticket bullet will link; if none exists, plan to create it after user approval in step 5 and before posting.
-5. **STOP - Show the user the draft** comment(s) and target file/line for approval before posting. Display:
-   - Target: `{path}:{line}`
-   - Format: A, B, or C
-   - Full comment body (rendered, including the `<details>` block content for Format B)
-   - For Format B: list all companion comment targets
-   - Wait for explicit user approval before proceeding
-6. **Post via GitHub API** (only after user approval):
+1. **Identify the finding** from the review report.
+2. **Classify the comment shape**:
+   - Format A: one self-contained, complete recommendation at one target with a valid suggestion and no deferred scope.
+   - Format B: a multi-file, non-contiguous, or structurally complex finding, or any evidence-backed split recommendation.
+   - Format C: a standalone test-gap finding.
+3. **Select the Format B delivery mode**:
+   - Default to B-current with the complete production fix and regression coverage in this PR.
+   - Use B-split only with concrete evidence from user direction, ticket scope, dependency state, ownership, or release boundaries, or when required test infrastructure does not exist and cannot be added within the current ticket.
+   - Cite the qualifying evidence. Complexity, file count, severity, and test effort are not split evidence.
+   - If a complete fix depends on unresolved product or architecture decisions, ask the user for direction rather than inventing a B-current recommendation or scope boundary.
+4. **Locate the exact file and line** in the PR diff where each comment anchors.
+   - Use `gh api repos/{owner}/{repo}/pulls/{pr}/files` to get the diff.
+   - Use `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` if needed.
+5. **STOP - Show the user the review-comment draft** before any GitHub mutation. Display the target, Format A/B-current/B-split/C, full rendered body including Format B details, every Format B companion, and for B-split the exact evidence plus the existing issue or a clearly marked pending issue. Wait for explicit comment approval.
+6. **STOP again before creating an issue** when an approved B-split draft has no existing issue:
+   - Search the repository's open and closed issues for an existing ticket that already owns the deferred work.
+   - If the search finds an existing ticket, replace the pending marker with its real number or URL, then return to step 5 for fresh approval of the complete rendered body.
+   - Otherwise, show the proposed issue title and complete body and request explicit issue-creation approval separate from review-comment approval.
+   - If approved, create the GitHub issue, capture its real number and URL, replace the pending marker in the approved B-split body, then proceed to posting.
+   - If declined, do not create or post; revise to B-current or use an existing issue, then return to step 5 for fresh approval of the complete rendered body.
+   - If creation fails, report the GitHub error and stop before posting any comment that references the missing issue.
+7. **Post through the existing gh API command** only after required approvals and, for B-split, a real issue link.
    ```bash
    gh api repos/{owner}/{repo}/pulls/{pr}/comments \
      -f body="<comment>" \
@@ -244,7 +308,7 @@ Anchor on the test file (last line or near the gap) rather than production code.
      -f side="RIGHT" \
      -f commit_id="<sha>"
    ```
-7. For Format B, post the primary first, capture its `html_url`, then substitute that URL into each companion's "See primary comment:" footer before posting the companions.
+8. **Post Format B companions** after the primary using its real `html_url`.
 
 ## Writing Rules
 
@@ -264,9 +328,10 @@ Anchor on the test file (last line or near the gap) rather than production code.
 - **Diagrams over prose**: for anything involving data flow, control flow, or timing - draw it
 - **Suggestion blocks must compile**: test mentally that the suggestion is syntactically valid
 - **One finding = one comment thread**: don't combine findings
-- **Split scope explicitly**: for any non-trivial finding, name what lands in THIS PR vs what splits to a follow-up ticket. Reviewers should never have to guess whether a recommendation is blocking merge.
-- **Structure is fixed for Format B**: title + what's-wrong intro → **Recommended fix** → `---` + `<details>`. Do not reorder. The intro is plain English; save citations, diagrams, and failure scenarios for the `<details>` block.
-- **No duplication across the fold (Format B)**: each point appears exactly once - above the fold or inside `<details>`, never both. The `<details>` block adds evidence and the follow-up task breakdown; it never restates the Recommended fix bullets.
+- **Current-PR scope is the default**: for B-current, name the complete production fix and regression coverage under **In this PR**. Do not add follow-up language merely because the work is multi-file, structural, lacks a suggestion block, adds tests, or is LOW severity.
+- **Split scope requires evidence**: for B-split, state the concrete blocker and keep the in-PR change safe and independently complete. Never infer a split from size or complexity alone.
+- **Structure is fixed for Format B**: title + what's-wrong intro -> **Recommended fix** -> `---` + `<details>`. B-current has one **In this PR** bullet; B-split adds one **Follow-up ticket** bullet. Save citations, diagrams, failure scenarios, and task breakdowns for the `<details>` block.
+- **No duplication across the fold (Format B)**: each point appears exactly once above or below the fold. The `<details>` block adds evidence and implementation task breakdown; it never restates the Recommended fix bullets.
 - **Suggestion block placement (Format B)**: if the in-PR fix is a small self-contained code change on the file this comment anchors, put the ```suggestion``` block inside the "In this PR" bullet of **Recommended fix**. Never inside `<details>`.
 - **No bare `#N` in prose**: GitHub auto-links `#N` to issues/PRs. Write the number without `#` prefix (e.g. "violation 2" not "violation #2") EXCEPT when quoting a real ticket reference like `#4342`.
 - **Preamble discipline for suggestion blocks**: never precede a ```suggestion``` block with a "Suggested code:" or "Here is the fix:" preamble - the block is self-explanatory. Any accompanying explanation goes AFTER as "Notes on the suggestion above: ..." if needed.
@@ -330,10 +395,13 @@ StreamManager              EezDisconnectAborter
 - [ ] Commit SHA matches the PR head
 - [ ] Title captures the DEFECT (not the fix)
 - [ ] Risk is bounded in the description
-- [ ] For Format B primaries: above the fold contains only the title, the what's-wrong intro (2-4 sentences), and **Recommended fix** with both "In this PR (#TICKET)" and "Follow-up ticket" bullets
-- [ ] For Format B primaries: the "Follow-up ticket" bullet links a real GitHub issue (`#N` same-repo, full URL cross-repo)
-- [ ] For Format B primaries: any code suggestion lives inside the "In this PR" bullet of **Recommended fix** (never inside `<details>`), with no "Suggested code:" preamble
-- [ ] For Format B primaries: `<details>` block present with a `---` rule above it, summary line `<b>Problem detail and follow-up scope</b>`, a blank line after `</summary>` and before `</details>`, and no content duplicated from above the fold
-- [ ] For Format B: every companion is a stub - the primary's `**[SEVERITY-N] ...**` title verbatim (no sub-title, no rewording; the companion's angle goes in the 1-2 sentence intro), an optional suggestion block, and a `See primary comment:` link using the primary's real `html_url`. No Recommended fix section, no `<details>`. Only `[TEST GAP]` companions may use a different marker.
+- [ ] Every Format B draft identifies B-current or B-split before posting.
+- [ ] B-current contains one **In this PR** bullet covering the complete production fix and regression coverage, with no follow-up placeholder, ticket search, or issue creation.
+- [ ] B-split cites qualifying evidence, keeps the in-PR change safe and independently complete, and includes both **In this PR** and **Follow-up ticket** bullets.
+- [ ] A posted B-split comment links a real GitHub issue; after separately approved creation, its real number and URL replaced the pending marker before posting.
+- [ ] Every materially revised comment body received fresh review-comment approval before posting.
+- [ ] Any Format B code suggestion lives inside the **In this PR** bullet of **Recommended fix**, never inside `<details>`, with no suggestion preamble.
+- [ ] Every Format B `<details>` block has a `---` rule above it, summary line `<b>Problem detail and implementation scope</b>`, blank lines after `</summary>` and before `</details>`, and no content duplicated from above the fold.
+- [ ] Every Format B companion is a stub with the primary title verbatim, a 1-2 sentence file-specific angle, an optional suggestion, and a `See primary comment:` link using the primary's real `html_url`. It has no Recommended fix section or `<details>` block. Only `[TEST GAP]` companions may use a different marker.
 - [ ] Any recommendation to "add an inline comment / TODO / marker / Javadoc line / placeholder test" is expressed as a ```suggestion``` block containing the exact edited code, NOT as prose describing the comment.
 - [ ] Read the above-the-fold text out loud. If any clause makes you stumble, or if any word could be cut without loss of meaning, rewrite before posting. It must not carry filler ("In plain terms:", redundant adjectives, negative framing when positive would read faster, or qualifiers that just restate the setup).
