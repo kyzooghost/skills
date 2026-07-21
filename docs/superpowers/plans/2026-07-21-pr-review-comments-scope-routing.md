@@ -45,12 +45,12 @@ Replace the content from `### Format B:` through the closing fence immediately b
 `````markdown
 ### Format B: Multi-file or structural finding
 
-Use Format B when the finding spans multiple files, needs non-contiguous edits, or requires structural explanation. Format B describes comment shape; it does not decide whether work leaves the current PR.
+Use Format B when the finding spans multiple files, needs non-contiguous edits, requires structural explanation, or has any evidence-backed split recommendation. The multi-file and structural paths describe comment shape; an evidence-backed split also requires Format B's two-scope structure even when its current-PR mitigation has one target.
 
 **Choose one delivery mode before drafting:**
 
 - **B-current (default):** the complete production fix and regression coverage land in this PR. Multi-file scope, structural work, lack of a suggestion block, additional tests, and LOW severity do not justify a follow-up ticket by themselves.
-- **B-split (exception):** part of the fix cannot reasonably land in this PR because the user, maintainer, or governing ticket excludes it; an unmet prerequisite blocks it; it belongs to another repository, owner, release, or deployment boundary; or required test infrastructure cannot be added within the current ticket. Cite the qualifying evidence in the draft. "Too large," "architectural," and "better as follow-up" do not qualify without a concrete blocker.
+- **B-split (exception):** part of the fix cannot reasonably land in this PR because the user, maintainer, or governing ticket excludes it; an unmet prerequisite blocks it; it belongs to another repository, owner, release, or deployment boundary; or required test infrastructure does not exist and cannot be added within the current ticket. Cite the qualifying evidence in the draft. "Too large," "architectural," and "better as follow-up" do not qualify without a concrete blocker.
 
 If no qualifying evidence exists, use B-current.
 
@@ -117,7 +117,7 @@ Replace the existing `<details>` conventions and follow-up-ticket-linking paragr
 
 **Regression coverage.** Tests that prove a production finding stays fixed are part of the current PR by default. Defer them only in B-split when the required harness or prerequisite does not exist and cannot be added within the current ticket; cite that blocker. Use Format C when the finding itself is solely a test gap.
 
-**Follow-up ticket linking (B-split only).** Link the specific GitHub issue that tracks the evidence-backed deferred work. `#N` auto-links within the same repo; use the full issue URL for a cross-repo ticket. If no issue exists, first obtain approval for the review-comment draft, then show the proposed issue title and body and request separate approval to create it. Approval of the review-comment draft does not authorize issue creation. Do not post a placeholder or unlinked split comment if creation is declined or fails; revise to B-current or use an existing issue supplied by the user.
+**Follow-up ticket linking (B-split only).** Link the specific GitHub issue that tracks the evidence-backed deferred work. `#N` auto-links within the same repo; use the full issue URL for a cross-repo ticket. If no issue exists, first obtain approval for the review-comment draft, then show the proposed issue title and body and request separate approval to create it. Approval of the review-comment draft does not authorize issue creation. If creation is approved, create the issue, capture its real number and URL, replace the pending marker in the approved B-split body, and then post. If creation is declined, do not create the issue or post the split comment; revise to B-current or use an existing issue supplied by the user, then return to the review-comment draft gate for fresh approval of the complete rendered body. If creation fails, report the error and stop without posting a comment that references the missing issue.
 ```
 
 - [ ] **Step 5: Replace the Procedure section**
@@ -127,13 +127,14 @@ Replace the complete numbered list under `## Procedure` with:
 ```markdown
 1. **Identify the finding** from the review report.
 2. **Classify the comment shape**:
-   - Format A: one self-contained code change at one target with a valid suggestion block.
-   - Format B: a multi-file, non-contiguous, or structurally complex finding.
+   - Format A: one self-contained, complete recommendation at one target with a valid suggestion block and no deferred scope.
+   - Format B: a multi-file, non-contiguous, or structurally complex finding, or any evidence-backed split recommendation.
    - Format C: a standalone test-gap finding.
 3. **Select the Format B delivery mode**:
    - Default to B-current with the complete production fix and regression coverage in this PR.
-   - Use B-split only when user direction, ticket scope, dependency state, ownership, release boundaries, or unavailable test infrastructure supplies concrete evidence that work cannot reasonably land here.
+   - Use B-split only with concrete evidence from user direction, ticket scope, dependency state, ownership, or release boundaries, or when required test infrastructure does not exist and cannot be added within the current ticket.
    - Cite the qualifying evidence. Complexity, file count, severity, and test effort are not split evidence.
+   - If a complete fix depends on unresolved product or architecture decisions, ask the user for direction rather than inventing a B-current recommendation or scope boundary.
 4. **Locate the exact file and line** in the PR diff where each comment anchors:
    - Use `gh api repos/{owner}/{repo}/pulls/{pr}/files` to get the diff.
    - Use `gh api repos/{owner}/{repo}/contents/{path}?ref={sha}` if needed.
@@ -145,12 +146,14 @@ Replace the complete numbered list under `## Procedure` with:
    - For B-split, the exact qualifying evidence and the existing issue link or a clearly marked pending issue.
    - Wait for explicit approval of the review-comment draft.
 6. **STOP again before creating an issue** when an approved B-split draft has no existing issue:
-   - Search the repository's open and closed issues for an existing ticket that already owns the deferred work; link it instead of creating a duplicate.
-   - Show the proposed issue title and complete body.
+   - Search the repository's open and closed issues for an existing ticket that already owns the deferred work.
+   - If the search finds an existing ticket, replace the pending marker with its real number or URL, then return to step 5 for fresh approval of the complete rendered body.
+   - Otherwise, show the proposed issue title and complete body.
    - Request explicit issue-creation approval separate from review-comment approval.
-   - If declined, do not create the issue or post the split comment; revise to B-current or use an existing issue supplied by the user.
+   - If approved, create the GitHub issue, capture its real number and URL, replace the pending marker in the approved B-split body, and then proceed to posting.
+   - If declined, do not create the issue or post the split comment; revise to B-current or use an existing issue supplied by the user, then return to step 5 for fresh approval of the complete rendered body.
    - If issue creation fails, report the GitHub error and stop before posting any comment that references the missing issue.
-7. **Post via GitHub API** only after the required approvals:
+7. **Post via GitHub API** only after the required approvals and, for B-split, a real issue link:
    ```bash
    gh api repos/{owner}/{repo}/pulls/{pr}/comments \
      -f body="<comment>" \
@@ -183,7 +186,8 @@ Replace the checklist items from `For Format B primaries: above the fold` throug
 - [ ] Every Format B draft identifies B-current or B-split before posting.
 - [ ] B-current contains one **In this PR** bullet covering the complete production fix and regression coverage, with no follow-up placeholder, ticket search, or issue creation.
 - [ ] B-split cites qualifying evidence, keeps the in-PR change safe and independently complete, and includes both **In this PR** and **Follow-up ticket** bullets.
-- [ ] A posted B-split comment links a real GitHub issue; creating a new issue had separate explicit approval after review-comment approval.
+- [ ] A posted B-split comment links a real GitHub issue; after separately approved creation, its real number and URL replaced the pending marker before posting.
+- [ ] Every materially revised comment body received fresh review-comment approval before posting.
 - [ ] Any Format B code suggestion lives inside the **In this PR** bullet of **Recommended fix**, never inside `<details>`, with no suggestion preamble.
 - [ ] Every Format B `<details>` block has a `---` rule above it, summary line `<b>Problem detail and implementation scope</b>`, blank lines after `</summary>` and before `</details>`, and no content duplicated from above the fold.
 - [ ] Every Format B companion is a stub with the primary title verbatim, a 1-2 sentence file-specific angle, an optional suggestion, and a `See primary comment:` link using the primary's real `html_url`. It has no Recommended fix section or `<details>` block. Only `[TEST GAP]` companions may use a different marker.
@@ -329,9 +333,10 @@ Run:
 
 ```bash
 rg -n 'B-current|B-split|concrete blocker|Regression coverage|separate approval|Problem detail and implementation scope' skills/pr-review-comments/SKILL.md
+rg -n 'capture its real number and URL|fresh (review-comment )?approval|required test infrastructure does not exist and cannot be added|unresolved product or architecture|any evidence-backed split' skills/pr-review-comments/SKILL.md docs/superpowers/specs/2026-07-21-pr-review-comments-scope-routing-design.md docs/superpowers/plans/2026-07-21-pr-review-comments-scope-routing.md
 ```
 
-Expected: matches cover classification, templates, approval flow, writing rules, checklist, and examples.
+Expected: matches cover classification, templates, approval flow, positive issue creation, fresh approval after revisions, the full infrastructure condition, unresolved-decision escalation, writing rules, checklist, and examples.
 
 - [ ] **Step 3: Read the scenario paths in order**
 
@@ -343,21 +348,24 @@ sed -n '/### Format A:/,/## GitHub API Details/p' skills/pr-review-comments/SKIL
 
 Confirm these exact outcomes:
 
-1. One self-contained target routes to Format A.
+1. One complete, self-contained target with a valid suggestion and no deferred scope routes to Format A.
 2. Multi-file work without a blocker routes to B-current and performs no issue mutation.
-3. Evidence-backed deferral with an existing issue routes to B-split and links it.
+3. An evidence-backed split routes to B-split even if the current-PR mitigation has one target; with an existing issue, it links that issue.
 4. Evidence-backed deferral without an issue pauses for separate issue-title-and-body approval.
-5. Declined issue creation produces no issue and no placeholder comment.
-6. Production regression coverage stays in B-current unless unavailable infrastructure is cited.
-7. A standalone test gap routes to Format C.
+5. Approved creation creates the missing issue, captures its real number and URL, and substitutes the pending marker before posting.
+6. Declined issue creation produces no issue and no placeholder comment; a revised body returns for fresh review-comment approval before posting.
+7. Production regression coverage stays in B-current; the infrastructure exception applies only when required test infrastructure does not exist and cannot be added within the current ticket.
+8. A complete fix that depends on unresolved product or architecture decisions pauses for user direction instead of inventing a recommendation or scope boundary.
+9. A standalone test gap routes to Format C.
 
 - [ ] **Step 4: Run final Markdown and repository checks**
 
 Run:
 
 ```bash
-git diff --check HEAD~2..HEAD
-rg -n $'\u2014' skills/pr-review-comments/SKILL.md docs/superpowers/specs/2026-07-21-pr-review-comments-scope-routing-design.md
+git diff --check origin/main...HEAD
+git diff --name-only origin/main...HEAD
+rg -n $'\u2014' skills/pr-review-comments/SKILL.md docs/superpowers/specs/2026-07-21-pr-review-comments-scope-routing-design.md docs/superpowers/plans/2026-07-21-pr-review-comments-scope-routing.md
 git status --short --branch
 ```
 
@@ -365,4 +373,4 @@ Expected:
 
 - `git diff --check` exits successfully with no output.
 - The em-dash search returns no output.
-- The branch is clean and contains the plan's two implementation commits.
+- The branch is clean and the PR range changes only `docs/superpowers/specs/2026-07-21-pr-review-comments-scope-routing-design.md`, `docs/superpowers/plans/2026-07-21-pr-review-comments-scope-routing.md`, and `skills/pr-review-comments/SKILL.md`.

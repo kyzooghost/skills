@@ -36,10 +36,10 @@ This makes an implementation detail of the comment format drive project scope. M
 
 ## Classification Model
 
-Select the comment format based on presentation complexity:
+Select the comment format from presentation complexity and the split-recommendation exception:
 
-- **Format A:** one self-contained code change at one target, with a valid suggestion block.
-- **Format B:** a multi-file, non-contiguous, or structurally complex finding.
+- **Format A:** one self-contained, complete recommendation at one target, with a valid suggestion block and no deferred scope.
+- **Format B:** a multi-file, non-contiguous, or structurally complex finding, or any evidence-backed split recommendation even when the current-PR mitigation has one target.
 - **Format C:** a standalone test-gap finding whose primary defect is missing coverage.
 
 After selecting Format B, select one delivery mode independently.
@@ -134,21 +134,21 @@ When no issue exists yet, the user-visible draft marks the ticket as pending sep
 
 Regression coverage for a production finding is part of that finding's current-PR fix by default. It appears in the `B-current` **In this PR** bullet and task list rather than becoming a separate follow-up issue.
 
-Coverage may move to `B-split` only when the required harness or prerequisite does not exist and cannot reasonably be added within the current ticket. The draft must state that blocker. Format C remains available when the submitted finding is solely about missing tests rather than a production defect plus its regression coverage.
+Coverage may move to `B-split` only when the required harness or prerequisite does not exist and cannot be added within the current ticket. The draft must state that blocker. Format C remains available when the submitted finding is solely about missing tests rather than a production defect plus its regression coverage.
 
 ## Approval and Issue-Creation Flow
 
 The procedure becomes:
 
 1. Identify the finding.
-2. Classify the comment as Format A, Format B, or Format C based on comment shape.
+2. Classify the comment as Format A, Format B, or Format C using the classification model, including the evidence-backed split exception.
 3. For Format B, select `B-current` by default and evaluate the split-eligibility conditions.
 4. Locate the exact diff anchors and companion targets.
 5. Show the user the full comment draft, Format B mode, companion targets, and any split evidence.
 6. Wait for explicit approval of the review-comment draft.
 7. If an approved `B-split` draft has no existing issue, show the proposed issue title and body and request separate approval to create it.
-8. If issue creation is approved, create the issue, substitute its number, and post the already approved comments.
-9. If issue creation is declined, do not post a placeholder or unlinked split comment. Revise the finding to `B-current` or use an existing issue supplied by the user.
+8. If issue creation is approved, create the issue, capture its real number and URL, replace the pending marker in the approved `B-split` body, and post the comments.
+9. If issue creation is declined, do not post a placeholder or unlinked split comment. Revise the finding to `B-current` or use an existing issue supplied by the user, then return to the review-comment draft gate for fresh approval of the complete rendered body. The same fresh approval is required when substituting a different existing issue.
 
 Approval of a review-comment draft does not imply approval to create a GitHub issue.
 
@@ -188,19 +188,23 @@ Update these sections together so no stale rule recreates the mandatory-ticket b
 
 Manually exercise the amended skill against these scenarios:
 
-1. A one-file self-contained change selects Format A.
+1. A complete, self-contained one-target recommendation with a valid suggestion and no deferred scope selects Format A.
 2. A multi-file visibility fix plus bytecode assertions selects `B-current`, contains one **In this PR** bullet, and creates no issue.
-3. A multi-file fix with a cited existing dependency selects `B-split` and links the existing issue.
+3. An evidence-backed split selects `B-split` even when its current-PR mitigation has one target, and a cited existing dependency links the existing issue.
 4. A justified split without an issue pauses after comment approval, displays the proposed issue title and body, and requests separate creation approval.
-5. Declining issue creation results in no issue and no placeholder split comment.
-6. Regression tests remain in the current PR unless the draft cites missing infrastructure or another qualifying blocker.
-7. A standalone missing-test finding still selects Format C.
+5. Approving issue creation creates the issue, captures its real number and URL, and substitutes the pending marker before posting.
+6. Declining issue creation results in no issue and no placeholder split comment; any revised body returns for fresh review-comment approval before posting.
+7. Regression tests remain in the current PR unless required test infrastructure does not exist and cannot be added within the current ticket.
+8. A complete fix that depends on unresolved product or architecture decisions pauses for user direction instead of inventing a `B-current` recommendation or scope boundary.
+9. A standalone missing-test finding still selects Format C.
 
 Static verification should also confirm:
 
 - No unconditional instruction says every Format B comment needs both bullets.
 - No checklist item requires a follow-up issue for `B-current`.
 - Every issue-creation instruction is conditional on `B-split` and separate approval.
+- Approved issue creation captures the real issue number and URL and substitutes the pending marker before posting.
+- Every materially revised review-comment body receives fresh approval before posting.
 - The details summary is consistently `Problem detail and implementation scope`.
 - The existing concise-above-the-fold and companion-stub rules remain intact.
 
