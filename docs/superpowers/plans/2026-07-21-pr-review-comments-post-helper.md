@@ -120,7 +120,7 @@ git commit -m "docs: route review comment posting through validator"
 - Verify: `skills/pr-review-comments/SKILL.md`
 - Verify: `tests/test_post_review_comments.py`
 
-- [ ] **Step 1: Run repository checks**
+- [x] **Step 1: Run repository checks**
 
 ```bash
 python3 -m unittest discover -s tests -v
@@ -129,13 +129,13 @@ git diff --check origin/main...HEAD
 
 Expected: all tests pass and `git diff --check` emits no output.
 
-- [ ] **Step 2: Audit shell safety and placeholders**
+- [x] **Step 2: Audit shell safety and placeholders**
 
 Run: `rg -n "shell=True|cat <<EOF|\\$primary_url|primary html_url inserted|{owner}|{repo}|{pr}|{id}" skills/pr-review-comments/scripts/post_review_comments.py skills/pr-review-comments/SKILL.md`
 
 Expected: no unsafe shell construction or unresolved placeholder instructions remain in the helper workflow; rejection tests may mention rejected markers only in the test file.
 
-- [ ] **Step 3: Confirm exact changed files and a clean worktree**
+- [x] **Step 3: Confirm exact changed files and a clean worktree**
 
 ```bash
 git diff --name-only origin/main...HEAD
