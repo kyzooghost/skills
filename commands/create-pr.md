@@ -4,22 +4,28 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 
 ## Usage
 
+```text
+/create-pr [--base <branch>] [--draft]
+/create-pr --update [--base <branch>]
 ```
-/create-pr           # Create new PR
-/create-pr --update  # Update existing PR for current branch
-```
+
+- `--base <branch>` uses the named PR base instead of resolving the repository default.
+- `--draft` creates a new draft PR.
+- `--update --draft` is unsupported because draft conversion and PR content updates are separate mutations. Stop with: "Error: `--update --draft` is unsupported. Use `gh pr ready --undo` explicitly if the existing PR must return to draft."
+- Reject unknown flags and a missing value after `--base` before performing any GitHub mutation.
 
 ## What This Command Does
 
 1. Resolves the GitHub `owner/repo` from the local git remote
 2. Checks if a PR already exists for the current branch
-3. Gets the diff against main branch
-4. Gets commit messages since branching from main
-5. Scans conversation context for related ticket references
-6. Generates a complete PR description
-7. Shows a preview to the user
-8. Scrubs sensitive content from the PR before publishing
-9. Creates or updates the PR via `gh` CLI
+3. Resolves an explicit base branch, the existing PR base for updates, or the repository default branch
+4. Gets the diff against the resolved base branch
+5. Gets commit messages since branching from the resolved base branch
+6. Scans conversation context for related ticket references
+7. Generates a complete PR description
+8. Shows a preview to the user
+9. Scrubs sensitive content from the PR before publishing
+10. Creates a normal or draft PR, or updates an existing PR, against the resolved base
 
 ## Step 1: Repo Resolution
 
@@ -34,31 +40,68 @@ If no origin remote exists, stop with: "Error: no git origin remote found. This 
 
 ## Step 2: Check for Existing PR
 
-Run: `gh pr list --head $(git branch --show-current) --json number,url --jq '.[0]'`
+```bash
+gh pr list \
+  --head "$(git branch --show-current)" \
+  --json number,url,baseRefName \
+  --jq '.[0]'
+```
 
 Behavior:
 - If `--update` flag provided and no PR exists: stop with "Error: no PR exists for this branch. Use `/create-pr` to create one."
 - If no flag provided and PR exists: stop with "A PR already exists for this branch: {url}. Use `/create-pr --update` to update it."
 - Otherwise: proceed to next step
 
+Record the existing PR number as `PR_NUMBER` and its `baseRefName` when present.
+
+Base precedence:
+
+1. Use the value supplied through `--base <branch>`.
+2. For `--update` without `--base`, use the existing PR's `baseRefName`.
+3. For a new PR without `--base`, defer to Step 3's repository-default lookup.
+
+The same `BASE_BRANCH` value must be used for diff collection, commit collection, changed-file collection, PR creation, and PR update.
+
 ## Step 3: Gather Context
 
-Get the diff against main:
+If `BASE_BRANCH` was not supplied or obtained from an existing PR, resolve it from GitHub:
+
 ```bash
-git diff main...HEAD
+BASE_BRANCH="$(
+  gh repo view "$OWNER_REPO" \
+    --json defaultBranchRef \
+    --jq '.defaultBranchRef.name'
+)"
+```
+
+If the command fails or returns an empty value, stop with:
+
+```text
+Error: unable to resolve the PR base branch. Pass one explicitly with `--base <branch>`.
+```
+
+Fetch the selected base so local context reflects the remote branch:
+
+```bash
+git fetch origin "$BASE_BRANCH"
+```
+
+Get the diff against the resolved base branch:
+```bash
+git diff "origin/$BASE_BRANCH"...HEAD
 ```
 
 Get commit messages since branching:
 ```bash
-git log main..HEAD --pretty=format:"%s%n%b"
+git log "origin/$BASE_BRANCH"..HEAD --pretty=format:"%s%n%b"
 ```
 
 Get list of changed files:
 ```bash
-git diff main...HEAD --name-only
+git diff "origin/$BASE_BRANCH"...HEAD --name-only
 ```
 
-If no commits ahead of main, stop with: "Error: no changes to create PR for. Commit your changes first."
+If `git rev-list --count "origin/$BASE_BRANCH"..HEAD` returns `0`, stop with: "Error: no commits ahead of `$BASE_BRANCH`. Commit your changes first."
 
 Check for PR template:
 ```bash
@@ -163,24 +206,36 @@ If the preview still contains any of the above, rewrite the title and/or body, s
 
 ## Step 9: Create or Update
 
-Then create or update the PR:
+Use exactly one mutation.
 
-**For new PR:**
+For a new normal PR:
+
 ```bash
-gh pr create --title "{title}" --body "{description}"
+gh pr create --base "$BASE_BRANCH" --title "{title}" --body "{description}"
 ```
 
-**For update (`--update` flag):**
+For a new draft PR:
+
 ```bash
-gh pr edit --title "{title}" --body "{description}"
+gh pr create --base "$BASE_BRANCH" --draft --title "{title}" --body "{description}"
 ```
 
-After creation/update, show the PR URL.
+For an update:
+
+```bash
+gh pr edit "$PR_NUMBER" --base "$BASE_BRANCH" --title "{title}" --body "{description}"
+```
+
+After creation or update, show the PR URL and resolved base branch.
 
 ## Error Handling
 
 - `gh` CLI not installed or not authenticated: "Error: `gh` CLI is not available or not authenticated. Run `gh auth login` first."
 - PR creation fails: show the error from `gh` and stop
+- Missing value after `--base`: "Error: `--base` requires a branch name."
+- Unsupported flag combination: "Error: `--update --draft` is unsupported. Use `gh pr ready --undo` explicitly if the existing PR must return to draft."
+- Base resolution failure: "Error: unable to resolve the PR base branch. Pass one explicitly with `--base <branch>`."
+- Base fetch failure: show the `git fetch origin "$BASE_BRANCH"` error and stop.
 
 ## Ground Rules
 
