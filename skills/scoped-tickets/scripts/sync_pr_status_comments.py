@@ -18,6 +18,17 @@ OPEN_STATE = "OPEN"
 CLOSED_STATE = "CLOSED"
 MERGED_STATE = "MERGED"
 COMMENT_HEADER = "For visibility, this issue has linked PR activity:"
+MODE_FIELD = "mode"
+MODE_APPLY = "apply"
+MODE_DRY_RUN = "dry-run"
+COMMENTS_PLANNED_FIELD = "comments_planned"
+POSTED_FIELD = "posted"
+POSTED_PREFIX = f"{POSTED_FIELD}="
+VERIFICATION_FIELD = "verification"
+VERIFICATION_PASSED_VALUE = "passed"
+VERIFICATION_PASSED_LINE = (
+    f"{VERIFICATION_FIELD}={VERIFICATION_PASSED_VALUE}"
+)
 
 PULL_REQUEST_TYPENAME = "PullRequest"
 CROSS_REFERENCED_EVENT = "CrossReferencedEvent"
@@ -434,14 +445,14 @@ def synchronize(
 
 def format_audit_report(report: AuditReport, *, apply: bool) -> str:
     lines = [
-        f"mode={'apply' if apply else 'dry-run'}",
+        _report_line(MODE_FIELD, MODE_APPLY if apply else MODE_DRY_RUN),
         f"issues_inspected={report.issues_inspected}",
         f"linked_pull_requests={report.linked_pull_requests}",
         f"eligible_open={report.eligible_open}",
         f"eligible_merged={report.eligible_merged}",
         f"already_covered={report.already_covered}",
         f"ignored_closed_unmerged={report.ignored_closed_unmerged}",
-        f"comments_planned={len(report.plans)}",
+        _report_line(COMMENTS_PLANNED_FIELD, len(report.plans)),
     ]
     for plan in report.plans:
         entries = ", ".join(
@@ -456,6 +467,10 @@ def _require_mapping(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise SyncPrStatusCommentsError(f"{label} must be an object")
     return value
+
+
+def _report_line(label: str, value: str | int) -> str:
+    return f"{label}={value}"
 
 
 def _split_repository(repository: str, label: str) -> tuple[str, str]:
@@ -807,9 +822,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(format_audit_report(result.initial, apply=args.apply))
     for url in result.posted_urls:
-        print(f"posted={url}")
+        print(f"{POSTED_PREFIX}{url}")
     if args.apply:
-        print("verification=passed")
+        print(VERIFICATION_PASSED_LINE)
     return 0
 
 

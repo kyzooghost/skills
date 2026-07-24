@@ -1,27 +1,37 @@
 from __future__ import annotations
 
+import io
 import sys
 import unittest
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from unittest.mock import patch
 
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "skills" / "scoped-tickets" / "scripts"
 sys.path.insert(0, str(SCRIPTS_DIR))
 
+import sync_pr_status_comments as sync_pr_status_comments_module  # noqa: E402
 from sync_pr_status_comments import (  # noqa: E402
     AuditReport,
     COMMENT_HEADER,
+    COMMENTS_PLANNED_FIELD,
     GhClient,
     IssueCommentPlan,
     IssueSnapshot,
     LinkedPullRequest,
     MERGED_STATUS,
+    MODE_APPLY,
+    MODE_DRY_RUN,
     OPEN_STATUS,
+    POSTED_PREFIX,
     PullRequestStatus,
     StatusEntry,
     SyncPrStatusCommentsError,
+    VERIFICATION_PASSED_LINE,
     audit_repository,
     format_audit_report,
+    main,
     normalize_status,
     plan_issue_comment,
     synchronize,
@@ -665,6 +675,184 @@ class FakeSyncClient:
         )
 
 
+class FakeRepositoryClient:
+    def __init__(
+        self,
+        *,
+        issue_numbers: tuple[int, ...],
+        snapshots: dict[int, IssueSnapshot],
+        pull_requests: dict[int, PullRequestStatus],
+        issue_repo: str = "issue-owner/issues",
+        pr_repo: str = "pr-owner/pr-repo",
+        labels: dict[int, set[str]] | None = None,
+    ) -> None:
+        self.issue_repo = issue_repo
+        self.pr_repo = pr_repo
+        self._issue_numbers = issue_numbers
+        self._pull_requests = dict(pull_requests)
+        self._comments = {
+            issue_number: list(snapshot.comments)
+            for issue_number, snapshot in snapshots.items()
+        }
+        self._linked_pull_requests = {
+            issue_number: snapshot.linked_pull_requests
+            for issue_number, snapshot in snapshots.items()
+        }
+        self._labels = labels or {
+            issue_number: {"demo"} for issue_number in issue_numbers
+        }
+        self.posted: list[tuple[int, str]] = []
+
+    def list_labeled_issue_numbers(self, issue_tag: str) -> tuple[int, ...]:
+        if issue_tag != "demo":
+            raise AssertionError(issue_tag)
+        return tuple(
+            issue_number
+            for issue_number in self._issue_numbers
+            if issue_tag in self._labels.get(issue_number, set())
+        )
+
+    def get_issue_snapshot(self, issue_number: int) -> IssueSnapshot:
+        return IssueSnapshot(
+            number=issue_number,
+            comments=tuple(self._comments[issue_number]),
+            linked_pull_requests=self._linked_pull_requests[issue_number],
+        )
+
+    def get_pull_request(self, number: int) -> PullRequestStatus:
+        return self._pull_requests[number]
+
+    def issue_has_label(self, issue_number: int, issue_tag: str) -> bool:
+        return issue_tag in self._labels.get(issue_number, set())
+
+    def add_issue_comment(self, issue_number: int, body: str) -> str:
+        self.posted.append((issue_number, body))
+        self._comments[issue_number].append(body)
+        return (
+            "https://github.com/issue-owner/issues/"
+            f"issues/{issue_number}#issuecomment-100"
+        )
+
+
+class FakeMainGhClient(FakeRepositoryClient):
+    configured_issue_numbers: tuple[int, ...] = ()
+    configured_snapshots: dict[int, IssueSnapshot] = {}
+    configured_pull_requests: dict[int, PullRequestStatus] = {}
+    configured_labels: dict[int, set[str]] = {}
+    last_instance: FakeMainGhClient | None = None
+
+    @classmethod
+    def configure(
+        cls,
+        *,
+        issue_numbers: tuple[int, ...],
+        snapshots: dict[int, IssueSnapshot],
+        pull_requests: dict[int, PullRequestStatus],
+        labels: dict[int, set[str]] | None = None,
+    ) -> None:
+        cls.configured_issue_numbers = issue_numbers
+        cls.configured_snapshots = snapshots
+        cls.configured_pull_requests = pull_requests
+        cls.configured_labels = labels or {
+            issue_number: {"demo"} for issue_number in issue_numbers
+        }
+        cls.last_instance = None
+
+    def __init__(self, issue_repo: str, pr_repo: str) -> None:
+        super().__init__(
+            issue_numbers=self.configured_issue_numbers,
+            snapshots=self.configured_snapshots,
+            pull_requests=self.configured_pull_requests,
+            issue_repo=issue_repo,
+            pr_repo=pr_repo,
+            labels=self.configured_labels,
+        )
+        type(self).last_instance = self
+
+
+class AuditRepositoryTest(unittest.TestCase):
+    def test_mixed_inventory_counts_statuses_and_grouped_plans(self) -> None:
+        # Arrange
+        covered_merged = pull_request(
+            number=18,
+            state="MERGED",
+            merged_at="2026-07-24T10:45:21Z",
+        )
+        covered_open = pull_request(number=19)
+        client = FakeRepositoryClient(
+            issue_numbers=(44, 45),
+            snapshots={
+                44: IssueSnapshot(
+                    number=44,
+                    comments=(f"{covered_merged.url} - merged",),
+                    linked_pull_requests=(
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=17,
+                            url="https://github.com/pr-owner/pr-repo/pull/17",
+                        ),
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=18,
+                            url=covered_merged.url,
+                        ),
+                    ),
+                ),
+                45: IssueSnapshot(
+                    number=45,
+                    comments=("pr-owner/pr-repo#19 is open",),
+                    linked_pull_requests=(
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=19,
+                            url=covered_open.url,
+                        ),
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=20,
+                            url="https://github.com/pr-owner/pr-repo/pull/20",
+                        ),
+                    ),
+                ),
+            },
+            pull_requests={
+                17: pull_request(number=17),
+                18: covered_merged,
+                19: covered_open,
+                20: pull_request(number=20, state="CLOSED"),
+            },
+        )
+
+        # Act
+        result = audit_repository(client, "demo")
+
+        # Assert
+        self.assertEqual(result.issues_inspected, 2)
+        self.assertEqual(result.linked_pull_requests, 4)
+        self.assertEqual(result.eligible_open, 2)
+        self.assertEqual(result.eligible_merged, 1)
+        self.assertEqual(result.already_covered, 2)
+        self.assertEqual(result.ignored_closed_unmerged, 1)
+        self.assertEqual(
+            result.plans,
+            (
+                IssueCommentPlan(
+                    issue_number=44,
+                    entries=(
+                        StatusEntry(
+                            pull_request=pull_request(number=17),
+                            status=OPEN_STATUS,
+                        ),
+                    ),
+                    body=(
+                        f"{COMMENT_HEADER}\n\n"
+                        "- https://github.com/pr-owner/pr-repo/pull/17 - open"
+                    ),
+                ),
+            ),
+        )
+
+
 class SynchronizationTest(unittest.TestCase):
     def test_dry_run_reports_missing_status_without_mutation(self) -> None:
         # Arrange
@@ -810,14 +998,165 @@ class AuditOutputTest(unittest.TestCase):
         self.assertEqual(
             result,
             (
-                "mode=dry-run\n"
+                f"mode={MODE_DRY_RUN}\n"
                 "issues_inspected=2\n"
                 "linked_pull_requests=3\n"
                 "eligible_open=1\n"
                 "eligible_merged=1\n"
                 "already_covered=1\n"
                 "ignored_closed_unmerged=1\n"
-                "comments_planned=1\n"
+                f"{COMMENTS_PLANNED_FIELD}=1\n"
                 f"issue #44: {candidate.url} - open"
             ),
         )
+
+
+class MainTest(unittest.TestCase):
+    def test_main_requires_issue_repo_pr_repo_and_issue_tag(self) -> None:
+        # Arrange
+        stderr = io.StringIO()
+
+        # Act and Assert
+        with self.assertRaises(SystemExit) as error:
+            with redirect_stderr(stderr):
+                main([])
+        self.assertEqual(error.exception.code, 2)
+        self.assertIn("--issue-repo", stderr.getvalue())
+        self.assertIn("--pr-repo", stderr.getvalue())
+        self.assertIn("--issue-tag", stderr.getvalue())
+
+    def test_main_defaults_to_dry_run_without_mutation(self) -> None:
+        # Arrange
+        FakeMainGhClient.configure(
+            issue_numbers=(44,),
+            snapshots={
+                44: IssueSnapshot(
+                    number=44,
+                    comments=(),
+                    linked_pull_requests=(
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=17,
+                            url="https://github.com/pr-owner/pr-repo/pull/17",
+                        ),
+                    ),
+                ),
+            },
+            pull_requests={17: pull_request()},
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        # Act
+        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main(
+                    [
+                        "--issue-repo",
+                        "issue-owner/issues",
+                        "--pr-repo",
+                        "pr-owner/pr-repo",
+                        "--issue-tag",
+                        "demo",
+                    ]
+                )
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertIn(f"mode={MODE_DRY_RUN}", stdout.getvalue())
+        self.assertNotIn(POSTED_PREFIX, stdout.getvalue())
+        self.assertNotIn(VERIFICATION_PASSED_LINE, stdout.getvalue())
+        self.assertIsNotNone(FakeMainGhClient.last_instance)
+        assert FakeMainGhClient.last_instance is not None
+        self.assertEqual(FakeMainGhClient.last_instance.posted, [])
+
+    def test_main_selects_mutation_only_with_apply(self) -> None:
+        # Arrange
+        FakeMainGhClient.configure(
+            issue_numbers=(44,),
+            snapshots={
+                44: IssueSnapshot(
+                    number=44,
+                    comments=(),
+                    linked_pull_requests=(
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=17,
+                            url="https://github.com/pr-owner/pr-repo/pull/17",
+                        ),
+                    ),
+                ),
+            },
+            pull_requests={17: pull_request()},
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        # Act
+        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main(
+                    [
+                        "--issue-repo",
+                        "issue-owner/issues",
+                        "--pr-repo",
+                        "pr-owner/pr-repo",
+                        "--issue-tag",
+                        "demo",
+                        "--apply",
+                    ]
+                )
+
+        # Assert
+        self.assertEqual(result, 0)
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertIn(f"mode={MODE_APPLY}", stdout.getvalue())
+        self.assertIn(POSTED_PREFIX, stdout.getvalue())
+        self.assertIn(VERIFICATION_PASSED_LINE, stdout.getvalue())
+        self.assertIsNotNone(FakeMainGhClient.last_instance)
+        assert FakeMainGhClient.last_instance is not None
+        self.assertEqual(len(FakeMainGhClient.last_instance.posted), 1)
+
+    def test_main_returns_non_zero_for_sync_error(self) -> None:
+        # Arrange
+        FakeMainGhClient.configure(
+            issue_numbers=(44,),
+            snapshots={
+                44: IssueSnapshot(
+                    number=44,
+                    comments=(),
+                    linked_pull_requests=(
+                        LinkedPullRequest(
+                            repository="pr-owner/pr-repo",
+                            number=17,
+                            url="https://github.com/pr-owner/pr-repo/pull/17",
+                        ),
+                    ),
+                ),
+            },
+            pull_requests={
+                17: pull_request(state="MERGED", merged_at=None),
+            },
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        # Act
+        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main(
+                    [
+                        "--issue-repo",
+                        "issue-owner/issues",
+                        "--pr-repo",
+                        "pr-owner/pr-repo",
+                        "--issue-tag",
+                        "demo",
+                    ]
+                )
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn("missing mergedAt", stderr.getvalue())
