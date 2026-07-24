@@ -36,6 +36,8 @@ Parse `owner/repo` from the URL:
 - SSH format: `git@github.com:owner/repo.git` - extract between `:` and `.git`
 - Handle URLs with or without the trailing `.git`
 
+Record the parsed value as `OWNER_REPO`.
+
 If no origin remote exists, stop with: "Error: no git origin remote found. This command requires a GitHub remote."
 
 ## Step 2: Check for Existing PR
