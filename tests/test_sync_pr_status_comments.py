@@ -10,6 +10,9 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 
 from sync_pr_status_comments import (  # noqa: E402
     COMMENT_HEADER,
+    GhClient,
+    IssueSnapshot,
+    LinkedPullRequest,
     MERGED_STATUS,
     OPEN_STATUS,
     PullRequestStatus,
@@ -219,3 +222,366 @@ class CommentCoverageTest(unittest.TestCase):
                 f"- {merged_pr.url} - merged"
             ),
         )
+
+
+class FakeGhRunner:
+    def __init__(self, responses: list[dict[str, object]]) -> None:
+        self.responses = list(responses)
+        self.calls: list[list[str]] = []
+
+    def __call__(self, args: list[str]) -> dict[str, object]:
+        self.calls.append(args)
+        if not self.responses:
+            raise AssertionError(f"unexpected gh call: {args}")
+        return self.responses.pop(0)
+
+
+class GhClientTest(unittest.TestCase):
+    def test_lists_every_labeled_issue_page(self) -> None:
+        # Arrange
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "issues": {
+                                "nodes": [{"number": 10}],
+                                "pageInfo": {
+                                    "hasNextPage": True,
+                                    "endCursor": "issue-cursor",
+                                },
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issues": {
+                                "nodes": [{"number": 11}],
+                                "pageInfo": {
+                                    "hasNextPage": False,
+                                    "endCursor": None,
+                                },
+                            }
+                        }
+                    }
+                },
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.list_labeled_issue_numbers("demo")
+
+        # Assert
+        self.assertEqual(result, (10, 11))
+        self.assertIn("after=issue-cursor", runner.calls[1])
+        self.assertIn("states: [OPEN, CLOSED]", " ".join(runner.calls[0]))
+
+    def test_snapshot_returns_unique_target_repository_pull_requests(self) -> None:
+        # Arrange
+        target = {
+            "__typename": "PullRequest",
+            "number": 17,
+            "url": "https://github.com/pr-owner/prs/pull/17",
+            "repository": {"nameWithOwner": "pr-owner/prs"},
+        }
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "comments": {
+                                    "nodes": [{"body": "existing comment"}],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "timelineItems": {
+                                    "nodes": [
+                                        {
+                                            "__typename": "CrossReferencedEvent",
+                                            "source": target,
+                                        },
+                                        {
+                                            "__typename": "ConnectedEvent",
+                                            "subject": target,
+                                        },
+                                        {
+                                            "__typename": "CrossReferencedEvent",
+                                            "source": {
+                                                "__typename": "PullRequest",
+                                                "number": 18,
+                                                "url": "https://github.com/other/prs/pull/18",
+                                                "repository": {
+                                                    "nameWithOwner": "other/prs"
+                                                },
+                                            },
+                                        },
+                                        {
+                                            "__typename": "CrossReferencedEvent",
+                                            "source": {"__typename": "Issue"},
+                                        },
+                                    ],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.get_issue_snapshot(44)
+
+        # Assert
+        self.assertEqual(
+            result,
+            IssueSnapshot(
+                number=44,
+                comments=("existing comment",),
+                linked_pull_requests=(
+                    LinkedPullRequest(
+                        repository="pr-owner/prs",
+                        number=17,
+                        url="https://github.com/pr-owner/prs/pull/17",
+                    ),
+                ),
+            ),
+        )
+
+    def test_snapshot_paginates_comments(self) -> None:
+        # Arrange
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "comments": {
+                                    "nodes": [{"body": "first"}],
+                                    "pageInfo": {
+                                        "hasNextPage": True,
+                                        "endCursor": "comment-cursor",
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "comments": {
+                                    "nodes": [{"body": "second"}],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "timelineItems": {
+                                    "nodes": [],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.get_issue_snapshot(44)
+
+        # Assert
+        self.assertEqual(result.comments, ("first", "second"))
+        self.assertIn("after=comment-cursor", runner.calls[1])
+
+    def test_snapshot_paginates_timeline_items(self) -> None:
+        # Arrange
+        first = {
+            "__typename": "PullRequest",
+            "number": 17,
+            "url": "https://github.com/pr-owner/prs/pull/17",
+            "repository": {"nameWithOwner": "pr-owner/prs"},
+        }
+        second = {
+            "__typename": "PullRequest",
+            "number": 18,
+            "url": "https://github.com/pr-owner/prs/pull/18",
+            "repository": {"nameWithOwner": "pr-owner/prs"},
+        }
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "comments": {
+                                    "nodes": [],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "timelineItems": {
+                                    "nodes": [
+                                        {
+                                            "__typename": "CrossReferencedEvent",
+                                            "source": first,
+                                        }
+                                    ],
+                                    "pageInfo": {
+                                        "hasNextPage": True,
+                                        "endCursor": "timeline-cursor",
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "data": {
+                        "repository": {
+                            "issue": {
+                                "timelineItems": {
+                                    "nodes": [
+                                        {
+                                            "__typename": "CrossReferencedEvent",
+                                            "source": second,
+                                        }
+                                    ],
+                                    "pageInfo": {
+                                        "hasNextPage": False,
+                                        "endCursor": None,
+                                    },
+                                }
+                            }
+                        }
+                    }
+                },
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.get_issue_snapshot(44)
+
+        # Assert
+        self.assertEqual(
+            tuple(item.number for item in result.linked_pull_requests),
+            (17, 18),
+        )
+        self.assertIn("after=timeline-cursor", runner.calls[2])
+
+    def test_pull_request_status_is_read_from_pr_repository(self) -> None:
+        # Arrange
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "pullRequest": {
+                                "number": 17,
+                                "url": "https://github.com/pr-owner/prs/pull/17",
+                                "state": "OPEN",
+                                "mergedAt": None,
+                                "isDraft": False,
+                                "repository": {"nameWithOwner": "pr-owner/prs"},
+                            }
+                        }
+                    }
+                }
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.get_pull_request(17)
+
+        # Assert
+        self.assertEqual(result, pull_request(repository="pr-owner/prs"))
+        self.assertIn("owner=pr-owner", runner.calls[0])
+        self.assertIn("name=prs", runner.calls[0])
+
+    def test_label_recheck_reads_issue_repository(self) -> None:
+        # Arrange
+        runner = FakeGhRunner([{"labels": [{"name": "demo"}]}])
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.issue_has_label(44, "demo")
+
+        # Assert
+        self.assertTrue(result)
+        self.assertEqual(
+            runner.calls[0],
+            ["gh", "api", "repos/issue-owner/issues/issues/44"],
+        )
+
+    def test_comment_is_posted_only_to_issue_repository(self) -> None:
+        # Arrange
+        body = "status body"
+        runner = FakeGhRunner(
+            [
+                {
+                    "body": body,
+                    "html_url": (
+                        "https://github.com/issue-owner/issues/"
+                        "issues/44#issuecomment-100"
+                    ),
+                }
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act
+        result = client.add_issue_comment(44, body)
+
+        # Assert
+        self.assertEqual(
+            result,
+            "https://github.com/issue-owner/issues/issues/44#issuecomment-100",
+        )
+        self.assertEqual(
+            runner.calls[0][:3],
+            ["gh", "api", "repos/issue-owner/issues/issues/44/comments"],
+        )
+        self.assertIn(f"body={body}", runner.calls[0])
