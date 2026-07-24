@@ -18,7 +18,8 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 5. Scans conversation context for related ticket references
 6. Generates a complete PR description
 7. Shows a preview to the user
-8. Creates or updates the PR via `gh` CLI
+8. Scrubs sensitive content from the PR before publishing
+9. Creates or updates the PR via `gh` CLI
 
 ## Step 1: Repo Resolution
 
@@ -129,7 +130,7 @@ Run the `/doc-update` command to detect and fix documentation drift caused by th
 - If doc fixes are committed, re-run Step 3 (Gather Context) to include the doc changes in the PR description.
 - If no drift is found, proceed to the next step.
 
-## Step 7: Preview and Create
+## Step 7: Preview
 
 Display the generated PR to the user in this format:
 
@@ -146,6 +147,21 @@ Display the generated PR to the user in this format:
 
 Ready to create this PR? (Proceeding unless you say otherwise)
 ```
+
+## Step 8: Sensitive Content Review
+
+**Before publishing the PR**, review it (PR descriptions/titles, commit messages, issue/PR comments, code comments, changelog entries) for sensitive content picked up during the chat and strip it out. Never include:
+
+- Internal metrics or impact numbers (error rates, % of users/transactions affected, revenue, analytics results from Mixpanel, Sentry, Grafana, etc.)
+- PII or user-identifiable data (names, emails, addresses, transaction hashes, account IDs)
+- Incident narratives or details of unfixed/current production issues (what's broken, how to trigger it, who reported it)
+- Internal links or names of internal sources (Slack threads, Jira tickets beyond a plain ID, Notion, Zoom, dashboards) and coworker names
+
+Instead, describe the change technically and neutrally - keep incident context out of the PR.
+
+If the preview still contains any of the above, rewrite the title and/or body, show the updated preview, then proceed.
+
+## Step 9: Create or Update
 
 Then create or update the PR:
 
@@ -171,4 +187,5 @@ After creation/update, show the PR URL.
 - Do NOT prompt for user input unless explicitly requested (e.g., ticket creation)
 - Auto-generate everything from diff/context
 - Show preview before creating
+- Scrub sensitive content before publishing (see Step 8)
 - Never auto-commit - PR creation only

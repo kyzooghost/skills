@@ -14,6 +14,8 @@ from typing import Any, Callable, Sequence
 
 
 PRIMARY_URL_TOKEN = "{primary_url}"
+PRIMARY_URL_FOOTER = f"See primary comment: {PRIMARY_URL_TOKEN}"
+RIGHT_SIDE = "RIGHT"
 DISCUSSION_URL_PATTERN = re.compile(
     r"^https://github\.com/[^/]+/[^/]+/pull/\d+#discussion_r\d+$"
 )
@@ -37,6 +39,7 @@ class CommentTarget:
     path: str
     line: int
     body: str
+    start_line: int | None = None
 
 
 @dataclass(frozen=True)
@@ -62,13 +65,19 @@ def _target(value: Any, label: str) -> CommentTarget:
     path = data.get("path")
     line = data.get("line")
     body = data.get("body")
+    start_line = data.get("start_line")
     if not isinstance(path, str) or not path:
         raise PostReviewCommentsError(f"{label}.path must be a non-empty string")
     if isinstance(line, bool) or not isinstance(line, int) or line <= 0:
         raise PostReviewCommentsError(f"{label}.line must be a positive integer")
     if not isinstance(body, str) or not body:
         raise PostReviewCommentsError(f"{label}.body must be a non-empty string")
-    return CommentTarget(path=path, line=line, body=body)
+    if start_line is not None:
+        if isinstance(start_line, bool) or not isinstance(start_line, int) or start_line <= 0:
+            raise PostReviewCommentsError(f"{label}.start_line must be a positive integer")
+        if start_line >= line:
+            raise PostReviewCommentsError(f"{label}.start_line must be less than {label}.line")
+    return CommentTarget(path=path, line=line, body=body, start_line=start_line)
 
 
 def _reject_unresolved_markers(body: str, label: str, *, allow_primary_url: bool = False) -> None:
@@ -81,6 +90,14 @@ def _reject_unresolved_markers(body: str, label: str, *, allow_primary_url: bool
 
 def _title(body: str) -> str:
     return next((line for line in body.splitlines() if line.strip()), "")
+
+
+def _require_companion_footer(body: str, label: str, primary_url: str) -> None:
+    footer = PRIMARY_URL_FOOTER.replace(PRIMARY_URL_TOKEN, primary_url)
+    if not body.rstrip("\r\n").endswith(footer):
+        raise PostReviewCommentsError(
+            f"{label} must end with the captured primary discussion URL"
+        )
 
 
 def validate_spec(raw_spec: dict[str, Any]) -> CommentSpec:
@@ -117,6 +134,11 @@ def validate_spec(raw_spec: dict[str, Any]) -> CommentSpec:
             raise PostReviewCommentsError(
                 f"spec.companions[{index}].body must contain exactly one {PRIMARY_URL_TOKEN} token"
             )
+        _require_companion_footer(
+            companion.body,
+            f"spec.companions[{index}].body",
+            PRIMARY_URL_TOKEN,
+        )
         if _title(companion.body) != primary_title:
             raise PostReviewCommentsError(
                 f"spec.companions[{index}].body must use the primary title verbatim"
@@ -137,7 +159,7 @@ def load_spec(spec_path: Path) -> CommentSpec:
 
 
 def _request_args(spec: CommentSpec, target: CommentTarget) -> list[str]:
-    return [
+    args = [
         "gh",
         "api",
         f"repos/{spec.repo}/pulls/{spec.pr}/comments",
@@ -145,13 +167,27 @@ def _request_args(spec: CommentSpec, target: CommentTarget) -> list[str]:
         f"body={target.body}",
         "-f",
         f"path={target.path}",
+    ]
+    if target.start_line is not None:
+        args.extend(
+            [
+                "-F",
+                f"start_line={target.start_line}",
+                "-f",
+                f"start_side={RIGHT_SIDE}",
+            ]
+        )
+    args.extend(
+        [
         "-F",
         f"line={target.line}",
         "-f",
-        "side=RIGHT",
+        f"side={RIGHT_SIDE}",
         "-f",
         f"commit_id={spec.commit}",
-    ]
+        ]
+    )
+    return args
 
 
 def run_gh_api(args: list[str]) -> dict[str, Any]:
@@ -160,7 +196,8 @@ def run_gh_api(args: list[str]) -> dict[str, Any]:
     except OSError as error:
         raise PostReviewCommentsError(f"could not run gh api: {error}") from error
     if completed.returncode != 0:
-        detail = completed.stderr.strip() or completed.stdout.strip() or "no gh output"
+        output = [stream.strip() for stream in (completed.stderr, completed.stdout) if stream.strip()]
+        detail = "\n".join(output) or "no gh output"
         raise PostReviewCommentsError(f"gh api failed: {detail}")
     try:
         response = json.loads(completed.stdout)
@@ -185,6 +222,13 @@ def _validate_response(
         raise PostReviewCommentsError(f"{label} response path does not match the submitted path")
     if response.get("line") != target.line:
         raise PostReviewCommentsError(f"{label} response line does not match the submitted line")
+    if target.start_line is not None:
+        if response.get("start_line") != target.start_line:
+            raise PostReviewCommentsError(f"{label} response start_line does not match the submitted start_line")
+        if response.get("start_side") != RIGHT_SIDE:
+            raise PostReviewCommentsError(f"{label} response start_side does not match the submitted start_side")
+        if response.get("side") != RIGHT_SIDE:
+            raise PostReviewCommentsError(f"{label} response side does not match the submitted side")
     url = response.get("html_url")
     if (
         not isinstance(url, str)
@@ -203,25 +247,30 @@ def post_review_comments(
 ) -> list[dict[str, Any]]:
     spec = raw_spec if isinstance(raw_spec, CommentSpec) else validate_spec(raw_spec)
     if dry_run:
-        return [
-            {"path": target.path, "line": target.line, "body": target.body}
-            for target in (spec.primary, *spec.companions)
-        ]
+        targets = []
+        for target in (spec.primary, *spec.companions):
+            validated_target = {"path": target.path, "line": target.line, "body": target.body}
+            if target.start_line is not None:
+                validated_target["start_line"] = target.start_line
+            targets.append(validated_target)
+        return targets
 
     primary_response = runner(_request_args(spec, spec.primary))
     url_prefix = f"https://github.com/{spec.repo}/pull/{spec.pr}#discussion_r"
-    primary_url = _validate_response(primary_response, spec.primary, "primary", url_prefix)
+    try:
+        primary_url = _validate_response(primary_response, spec.primary, "primary", url_prefix)
+    except PostReviewCommentsError as error:
+        returned_url = primary_response.get("html_url")
+        if isinstance(returned_url, str) and DISCUSSION_URL_PATTERN.fullmatch(returned_url):
+            raise PostReviewCommentsError(f"{error}; primary comment returned at {returned_url}") from error
+        raise
     responses = [primary_response]
 
     for index, companion in enumerate(spec.companions):
         try:
             body = companion.body.replace(PRIMARY_URL_TOKEN, primary_url)
-            footer = f"See primary comment: {primary_url}"
-            if not body.endswith(footer):
-                raise PostReviewCommentsError(
-                    f"companion {index} must end with the captured primary discussion URL"
-                )
-            resolved = CommentTarget(companion.path, companion.line, body)
+            _require_companion_footer(body, f"companion {index}", primary_url)
+            resolved = CommentTarget(companion.path, companion.line, body, companion.start_line)
             response = runner(_request_args(spec, resolved))
             _validate_response(response, resolved, f"companion {index}", url_prefix)
         except PostReviewCommentsError as error:
@@ -254,7 +303,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.dry_run:
         for target in responses:
-            print(f"validated {target['path']}:{target['line']}")
+            line_range = (
+                f"{target['start_line']}-{target['line']}"
+                if "start_line" in target
+                else str(target["line"])
+            )
+            print(f"validated {target['path']}:{line_range}")
     else:
         for response in responses:
             print(response["html_url"])
