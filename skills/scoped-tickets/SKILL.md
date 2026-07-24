@@ -1,30 +1,40 @@
 ---
 name: scoped-tickets
-description: Create scope-bounded Agent Work Tickets and run ticket-scoped PR reviews for a GitHub issue label collection. Keeps new tickets and PR reviews inside one ticket's scope, defers adjacent work to the owning ticket, and proposes new tickets for genuine gaps. Use when creating a ticket in a labeled collection, reviewing a PR that implements a ticket, or when the user mentions scoped tickets, Agent Work Ticket, ticket scope creep, or an issue-label ticket universe.
+description: Use when creating a scope-bounded ticket in a GitHub issue-label collection, reviewing a PR against one ticket's scope, checking linked PR status coverage, synchronizing missing PR status comments, or handling Agent Work Tickets and ticket scope creep.
 ---
 
 # Scoped Tickets
 
-Two workflows over a collection of GitHub issues sharing one label, where tickets have distinct, non-overlapping scope and cross-ticket dependencies are consumed via stubs/interfaces:
+Three workflows operate over a collection of GitHub issues sharing one label:
 
 1. **Create a new ticket** in the collection (Agent Work Ticket format).
 2. **Review a PR** against exactly one ticket's scope.
+3. **Synchronize linked PR status comments** across an issue repository and a PR repository.
 
-Both share Step 0 (scope inventory). Both must classify every out-of-scope observation as either "owned by another ticket" or "genuine gap -> propose new ticket".
+Workflows A and B use exclusive, non-overlapping ticket scope and share Step 0. They classify every
+out-of-scope observation as either "owned by another ticket" or
+"genuine gap -> propose new ticket". Workflow C audits or adds issue comments only and does not use
+the scope map or Gap rule.
 
 ## Inputs
 
-Required (ask if not provided):
+Workflows A and B require:
 
-- `REPO` - GitHub repo, e.g. `org/project`
-- `ISSUE_TAG` - the label defining the ticket universe, e.g. `synchronous-composability-demo`
+- `REPO` - GitHub repository containing the ticket collection, e.g. `org/project`
+- `ISSUE_TAG` - label defining the ticket universe, e.g. `synchronous-composability-demo`
 
 Workflow-specific:
 
 - Ticket creation: `SCOPE_STATEMENT` - one sentence stating exactly what the new ticket covers
 - PR review: `PR` (number/URL) and `TICKET` (issue number the PR implements)
+- PR status comments:
+  - `ISSUE_TAG` - label defining the issue collection
+  - `ISSUE_REPO` - repository containing the labeled issues and receiving comments
+  - `PR_REPO` - base repository containing the linked PRs
 
-## Step 0 - Scope inventory (mandatory for both workflows)
+`ISSUE_REPO` and `PR_REPO` may be the same repository.
+
+## Step 0 - Scope inventory (mandatory for Workflows A and B)
 
 Run:
 
@@ -164,7 +174,59 @@ Rules:
 4. "Deferred - owned by other tickets": one-liners with ticket numbers, no action requested from the author.
 5. "Proposed new tickets" (category C), or "No gaps found".
 
-## Gap rule (both workflows)
+## Workflow C - Synchronize linked PR status comments
+
+Inventory both open and closed issues in `ISSUE_REPO` carrying `ISSUE_TAG`. Discover relationships
+only from `CrossReferencedEvent.source` and `ConnectedEvent.subject`, and retain only PRs whose base
+repository is exactly `PR_REPO`.
+
+Eligible statuses are:
+
+- `open` - the PR is open; drafts remain `open`
+- `merged` - `mergedAt` is non-null
+
+Ignore closed-unmerged PRs. Do not infer relationships from titles, authors, branches, labels,
+changed files, or textual similarity.
+
+An existing comment covers one PR/current-status pair only when one line unambiguously identifies the
+PR by full URL, `PR_REPO#N`, or same-repository `PR #N`, and states the current status. An earlier
+`open` comment does not cover a PR after it merges.
+
+Run the deterministic helper:
+
+```bash
+python3 skills/scoped-tickets/scripts/sync_pr_status_comments.py \
+  --issue-repo "$ISSUE_REPO" \
+  --pr-repo "$PR_REPO" \
+  --issue-tag "$ISSUE_TAG"
+```
+
+The command defaults to dry-run. Add `--apply` only when the user explicitly asks to add, write,
+post, or synchronize missing comments. Requests to inspect, audit, check, or report remain dry-run.
+
+Apply mode re-fetches the label, comments, timeline relationships, and PR states before each post.
+It may add issue comments only. It must never edit or delete comments, change issue or PR metadata,
+comment on PRs, comment about PRs outside `PR_REPO`, or comment about closed-unmerged PRs.
+
+When multiple eligible PRs are missing coverage on one issue, post one comment:
+
+```markdown
+For visibility, this issue has linked PR activity:
+
+- https://github.com/pr-owner/pr-repo/pull/17 - open
+- https://github.com/pr-owner/pr-repo/pull/18 - merged
+```
+
+After apply mode, require fresh verification that every eligible issue/PR/current-status pair is
+covered. Report every uncovered pair and return failure.
+
+### Output (Workflow C)
+
+Report labeled issues inspected, linked PR relationships, eligible `open` and `merged` counts,
+already-covered pairs, ignored closed-unmerged PRs, comments planned or posted by issue, and
+verification failures.
+
+## Gap rule (Workflows A and B)
 
 If work is required by the overall effort but owned by NO ticket in the `ISSUE_TAG` universe (including the ticket being created/reviewed):
 
