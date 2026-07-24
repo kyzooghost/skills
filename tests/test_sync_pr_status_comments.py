@@ -9,8 +9,10 @@ SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "skills" / "scoped-tickets" 
 sys.path.insert(0, str(SCRIPTS_DIR))
 
 from sync_pr_status_comments import (  # noqa: E402
+    AuditReport,
     COMMENT_HEADER,
     GhClient,
+    IssueCommentPlan,
     IssueSnapshot,
     LinkedPullRequest,
     MERGED_STATUS,
@@ -18,8 +20,11 @@ from sync_pr_status_comments import (  # noqa: E402
     PullRequestStatus,
     StatusEntry,
     SyncPrStatusCommentsError,
+    audit_repository,
+    format_audit_report,
     normalize_status,
     plan_issue_comment,
+    synchronize,
     uncovered_entries,
 )
 
@@ -585,3 +590,234 @@ class GhClientTest(unittest.TestCase):
             ["gh", "api", "repos/issue-owner/issues/issues/44/comments"],
         )
         self.assertIn(f"body={body}", runner.calls[0])
+
+
+class FakeSyncClient:
+    def __init__(
+        self,
+        *,
+        pull_request_states: list[PullRequestStatus],
+        cover_on_second_snapshot: bool = False,
+        unlink_on_second_snapshot: bool = False,
+        has_label: bool = True,
+    ) -> None:
+        self.issue_repo = "issue-owner/issues"
+        self.pr_repo = "pr-owner/pr-repo"
+        self._pull_request_states = list(pull_request_states)
+        self._cover_on_second_snapshot = cover_on_second_snapshot
+        self._unlink_on_second_snapshot = unlink_on_second_snapshot
+        self._has_label = has_label
+        self._inventory_calls = 0
+        self._snapshot_calls = 0
+        self.comments: list[str] = []
+        self.posted: list[tuple[int, str]] = []
+
+    def list_labeled_issue_numbers(self, issue_tag: str) -> tuple[int, ...]:
+        if issue_tag != "demo":
+            raise AssertionError(issue_tag)
+        self._inventory_calls += 1
+        if not self._has_label and self._inventory_calls > 1:
+            return ()
+        return (44,)
+
+    def get_issue_snapshot(self, issue_number: int) -> IssueSnapshot:
+        if issue_number != 44:
+            raise AssertionError(issue_number)
+        self._snapshot_calls += 1
+        comments = list(self.comments)
+        if self._cover_on_second_snapshot and self._snapshot_calls >= 2:
+            comments.append(
+                "https://github.com/pr-owner/pr-repo/pull/17 - open"
+            )
+        linked_pull_requests = (
+            ()
+            if self._unlink_on_second_snapshot and self._snapshot_calls >= 2
+            else (
+                LinkedPullRequest(
+                    repository="pr-owner/pr-repo",
+                    number=17,
+                    url="https://github.com/pr-owner/pr-repo/pull/17",
+                ),
+            )
+        )
+        return IssueSnapshot(
+            number=44,
+            comments=tuple(comments),
+            linked_pull_requests=linked_pull_requests,
+        )
+
+    def get_pull_request(self, number: int) -> PullRequestStatus:
+        if number != 17:
+            raise AssertionError(number)
+        if len(self._pull_request_states) > 1:
+            return self._pull_request_states.pop(0)
+        return self._pull_request_states[0]
+
+    def issue_has_label(self, issue_number: int, issue_tag: str) -> bool:
+        return self._has_label and issue_number == 44 and issue_tag == "demo"
+
+    def add_issue_comment(self, issue_number: int, body: str) -> str:
+        self.posted.append((issue_number, body))
+        self.comments.append(body)
+        return (
+            "https://github.com/issue-owner/issues/"
+            "issues/44#issuecomment-100"
+        )
+
+
+class SynchronizationTest(unittest.TestCase):
+    def test_dry_run_reports_missing_status_without_mutation(self) -> None:
+        # Arrange
+        client = FakeSyncClient(pull_request_states=[pull_request()])
+
+        # Act
+        result = synchronize(client, "demo", apply=False)
+
+        # Assert
+        self.assertEqual(len(result.initial.plans), 1)
+        self.assertEqual(result.posted_urls, ())
+        self.assertEqual(client.posted, [])
+
+    def test_apply_skips_status_covered_during_recheck(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[pull_request()],
+            cover_on_second_snapshot=True,
+        )
+
+        # Act
+        result = synchronize(client, "demo", apply=True)
+
+        # Assert
+        self.assertEqual(result.posted_urls, ())
+        self.assertEqual(client.posted, [])
+        self.assertEqual(result.verification.plans, ())
+
+    def test_apply_skips_issue_after_label_removal(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[pull_request()],
+            has_label=False,
+        )
+
+        # Act
+        result = synchronize(client, "demo", apply=True)
+
+        # Assert
+        self.assertEqual(result.posted_urls, ())
+        self.assertEqual(client.posted, [])
+
+    def test_apply_skips_removed_pr_relationship(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[pull_request()],
+            unlink_on_second_snapshot=True,
+        )
+
+        # Act
+        result = synchronize(client, "demo", apply=True)
+
+        # Assert
+        self.assertEqual(result.posted_urls, ())
+        self.assertEqual(client.posted, [])
+        self.assertEqual(result.verification.plans, ())
+
+    def test_apply_posts_grouped_comment_with_verified_coverage(self) -> None:
+        # Arrange
+        client = FakeSyncClient(pull_request_states=[pull_request()])
+
+        # Act
+        result = synchronize(client, "demo", apply=True)
+
+        # Assert
+        self.assertEqual(
+            result.posted_urls,
+            (
+                "https://github.com/issue-owner/issues/"
+                "issues/44#issuecomment-100",
+            ),
+        )
+        self.assertEqual(len(client.posted), 1)
+        self.assertEqual(result.verification.plans, ())
+
+    def test_apply_skips_pr_that_closes_without_merge_before_post(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[
+                pull_request(),
+                pull_request(state="CLOSED"),
+            ]
+        )
+
+        # Act
+        result = synchronize(client, "demo", apply=True)
+
+        # Assert
+        self.assertEqual(result.posted_urls, ())
+        self.assertEqual(client.posted, [])
+        self.assertEqual(result.verification.ignored_closed_unmerged, 1)
+
+    def test_verification_names_status_that_changed_after_post(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[
+                pull_request(),
+                pull_request(),
+                pull_request(
+                    state="MERGED",
+                    merged_at="2026-07-24T10:45:21Z",
+                ),
+            ]
+        )
+
+        # Act and Assert
+        with self.assertRaisesRegex(
+            SyncPrStatusCommentsError,
+            r"issue #44.*pull/17.*merged",
+        ):
+            synchronize(client, "demo", apply=True)
+
+
+class AuditOutputTest(unittest.TestCase):
+    def test_report_includes_counts_for_grouped_plans(self) -> None:
+        # Arrange
+        candidate = pull_request()
+        report = AuditReport(
+            issues_inspected=2,
+            linked_pull_requests=3,
+            eligible_open=1,
+            eligible_merged=1,
+            already_covered=1,
+            ignored_closed_unmerged=1,
+            plans=(
+                IssueCommentPlan(
+                    issue_number=44,
+                    entries=(
+                        StatusEntry(
+                            pull_request=candidate,
+                            status=OPEN_STATUS,
+                        ),
+                    ),
+                    body=f"{COMMENT_HEADER}\n\n- {candidate.url} - open",
+                ),
+            ),
+        )
+
+        # Act
+        result = format_audit_report(report, apply=False)
+
+        # Assert
+        self.assertEqual(
+            result,
+            (
+                "mode=dry-run\n"
+                "issues_inspected=2\n"
+                "linked_pull_requests=3\n"
+                "eligible_open=1\n"
+                "eligible_merged=1\n"
+                "already_covered=1\n"
+                "ignored_closed_unmerged=1\n"
+                "comments_planned=1\n"
+                f"issue #44: {candidate.url} - open"
+            ),
+        )

@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import re
 import subprocess
+import argparse
+import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
 
@@ -162,6 +164,24 @@ class IssueSnapshot:
     linked_pull_requests: tuple[LinkedPullRequest, ...]
 
 
+@dataclass(frozen=True)
+class AuditReport:
+    issues_inspected: int
+    linked_pull_requests: int
+    eligible_open: int
+    eligible_merged: int
+    already_covered: int
+    ignored_closed_unmerged: int
+    plans: tuple[IssueCommentPlan, ...]
+
+
+@dataclass(frozen=True)
+class SynchronizationResult:
+    initial: AuditReport
+    posted_urls: tuple[str, ...]
+    verification: AuditReport
+
+
 GhRunner = Callable[[list[str]], dict[str, Any]]
 
 
@@ -281,6 +301,155 @@ def plan_issue_comment(
         entries=entries,
         body=_comment_body(entries),
     )
+
+
+def _current_pull_requests(
+    client: GhClient,
+    snapshot: IssueSnapshot,
+    cache: dict[int, PullRequestStatus],
+) -> tuple[PullRequestStatus, ...]:
+    current: list[PullRequestStatus] = []
+    for linked in snapshot.linked_pull_requests:
+        if linked.number not in cache:
+            cache[linked.number] = client.get_pull_request(linked.number)
+        current.append(cache[linked.number])
+    return tuple(current)
+
+
+def audit_repository(client: GhClient, issue_tag: str) -> AuditReport:
+    issue_numbers = client.list_labeled_issue_numbers(issue_tag)
+    linked_count = 0
+    open_count = 0
+    merged_count = 0
+    covered_count = 0
+    ignored_count = 0
+    plans: list[IssueCommentPlan] = []
+    cache: dict[int, PullRequestStatus] = {}
+
+    for issue_number in issue_numbers:
+        snapshot = client.get_issue_snapshot(issue_number)
+        pull_requests = _current_pull_requests(client, snapshot, cache)
+        linked_count += len(pull_requests)
+        missing = uncovered_entries(
+            snapshot.comments,
+            pull_requests,
+            client.issue_repo,
+        )
+        missing_keys = {
+            (entry.pull_request.repository.casefold(), entry.pull_request.number)
+            for entry in missing
+        }
+        for pull_request in pull_requests:
+            status = normalize_status(pull_request)
+            if status is None:
+                ignored_count += 1
+                continue
+            if status == OPEN_STATUS:
+                open_count += 1
+            else:
+                merged_count += 1
+            key = (pull_request.repository.casefold(), pull_request.number)
+            if key not in missing_keys:
+                covered_count += 1
+        if missing:
+            plans.append(
+                IssueCommentPlan(
+                    issue_number=issue_number,
+                    entries=missing,
+                    body=_comment_body(missing),
+                )
+            )
+
+    return AuditReport(
+        issues_inspected=len(issue_numbers),
+        linked_pull_requests=linked_count,
+        eligible_open=open_count,
+        eligible_merged=merged_count,
+        already_covered=covered_count,
+        ignored_closed_unmerged=ignored_count,
+        plans=tuple(plans),
+    )
+
+
+def _verification_failure(report: AuditReport) -> SyncPrStatusCommentsError:
+    uncovered = []
+    for plan in report.plans:
+        for entry in plan.entries:
+            uncovered.append(
+                f"issue #{plan.issue_number}: "
+                f"{entry.pull_request.url} - {entry.status}"
+            )
+    return SyncPrStatusCommentsError(
+        "post-apply verification found uncovered status pairs: "
+        + "; ".join(uncovered)
+    )
+
+
+def synchronize(
+    client: GhClient,
+    issue_tag: str,
+    *,
+    apply: bool,
+) -> SynchronizationResult:
+    initial = audit_repository(client, issue_tag)
+    posted_urls: list[str] = []
+
+    if not apply:
+        return SynchronizationResult(
+            initial=initial,
+            posted_urls=(),
+            verification=initial,
+        )
+
+    for original_plan in initial.plans:
+        issue_number = original_plan.issue_number
+        if not client.issue_has_label(issue_number, issue_tag):
+            continue
+        snapshot = client.get_issue_snapshot(issue_number)
+        fresh_pull_requests = tuple(
+            client.get_pull_request(linked.number)
+            for linked in snapshot.linked_pull_requests
+        )
+        fresh_plan = plan_issue_comment(
+            issue_number,
+            snapshot.comments,
+            fresh_pull_requests,
+            client.issue_repo,
+        )
+        if fresh_plan is None:
+            continue
+        posted_urls.append(
+            client.add_issue_comment(issue_number, fresh_plan.body)
+        )
+
+    verification = audit_repository(client, issue_tag)
+    if verification.plans:
+        raise _verification_failure(verification)
+    return SynchronizationResult(
+        initial=initial,
+        posted_urls=tuple(posted_urls),
+        verification=verification,
+    )
+
+
+def format_audit_report(report: AuditReport, *, apply: bool) -> str:
+    lines = [
+        f"mode={'apply' if apply else 'dry-run'}",
+        f"issues_inspected={report.issues_inspected}",
+        f"linked_pull_requests={report.linked_pull_requests}",
+        f"eligible_open={report.eligible_open}",
+        f"eligible_merged={report.eligible_merged}",
+        f"already_covered={report.already_covered}",
+        f"ignored_closed_unmerged={report.ignored_closed_unmerged}",
+        f"comments_planned={len(report.plans)}",
+    ]
+    for plan in report.plans:
+        entries = ", ".join(
+            f"{entry.pull_request.url} - {entry.status}"
+            for entry in plan.entries
+        )
+        lines.append(f"issue #{plan.issue_number}: {entries}")
+    return "\n".join(lines)
 
 
 def _require_mapping(value: Any, label: str) -> dict[str, Any]:
@@ -612,3 +781,37 @@ class GhClient:
                 f"issue #{issue_number} comment response URL is invalid"
             )
         return url
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--issue-repo", required=True)
+    parser.add_argument("--pr-repo", required=True)
+    parser.add_argument("--issue-tag", required=True)
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="Add missing comments after re-fetching current GitHub state",
+    )
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    client = GhClient(args.issue_repo, args.pr_repo)
+    try:
+        result = synchronize(client, args.issue_tag, apply=args.apply)
+    except SyncPrStatusCommentsError as error:
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
+
+    print(format_audit_report(result.initial, apply=args.apply))
+    for url in result.posted_urls:
+        print(f"posted={url}")
+    if args.apply:
+        print("verification=passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
