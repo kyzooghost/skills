@@ -601,6 +601,34 @@ class GhClientTest(unittest.TestCase):
         )
         self.assertIn(f"body={body}", runner.calls[0])
 
+    def test_issue_pagination_requires_cursor_for_next_page(self) -> None:
+        # Arrange
+        runner = FakeGhRunner(
+            [
+                {
+                    "data": {
+                        "repository": {
+                            "issues": {
+                                "nodes": [{"number": 10}],
+                                "pageInfo": {
+                                    "hasNextPage": True,
+                                    "endCursor": None,
+                                },
+                            }
+                        }
+                    }
+                }
+            ]
+        )
+        client = GhClient("issue-owner/issues", "pr-owner/prs", runner=runner)
+
+        # Act and Assert
+        with self.assertRaisesRegex(
+            SyncPrStatusCommentsError,
+            "issues.pageInfo.endCursor is required for another page",
+        ):
+            client.list_labeled_issue_numbers("demo")
+
 
 class FakeSyncClient:
     def __init__(
@@ -734,40 +762,40 @@ class FakeRepositoryClient:
         )
 
 
-class FakeMainGhClient(FakeRepositoryClient):
-    configured_issue_numbers: tuple[int, ...] = ()
-    configured_snapshots: dict[int, IssueSnapshot] = {}
-    configured_pull_requests: dict[int, PullRequestStatus] = {}
-    configured_labels: dict[int, set[str]] = {}
-    last_instance: FakeMainGhClient | None = None
-
-    @classmethod
-    def configure(
-        cls,
+class FakeMainGhClientFactory:
+    def __init__(
+        self,
         *,
         issue_numbers: tuple[int, ...],
         snapshots: dict[int, IssueSnapshot],
         pull_requests: dict[int, PullRequestStatus],
         labels: dict[int, set[str]] | None = None,
     ) -> None:
-        cls.configured_issue_numbers = issue_numbers
-        cls.configured_snapshots = snapshots
-        cls.configured_pull_requests = pull_requests
-        cls.configured_labels = labels or {
+        self._issue_numbers = issue_numbers
+        self._snapshots = snapshots
+        self._pull_requests = pull_requests
+        self._labels = labels or {
             issue_number: {"demo"} for issue_number in issue_numbers
         }
-        cls.last_instance = None
+        self.instances: list[FakeRepositoryClient] = []
 
-    def __init__(self, issue_repo: str, pr_repo: str) -> None:
-        super().__init__(
-            issue_numbers=self.configured_issue_numbers,
-            snapshots=self.configured_snapshots,
-            pull_requests=self.configured_pull_requests,
+    def __call__(self, issue_repo: str, pr_repo: str) -> FakeRepositoryClient:
+        instance = FakeRepositoryClient(
+            issue_numbers=self._issue_numbers,
+            snapshots=self._snapshots,
+            pull_requests=self._pull_requests,
             issue_repo=issue_repo,
             pr_repo=pr_repo,
-            labels=self.configured_labels,
+            labels=self._labels,
         )
-        type(self).last_instance = self
+        self.instances.append(instance)
+        return instance
+
+    @property
+    def last_instance(self) -> FakeRepositoryClient | None:
+        if not self.instances:
+            return None
+        return self.instances[-1]
 
 
 class AuditRepositoryTest(unittest.TestCase):
@@ -965,6 +993,34 @@ class SynchronizationTest(unittest.TestCase):
         ):
             synchronize(client, "demo", apply=True)
 
+    def test_verification_failure_preserves_posted_urls(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[
+                pull_request(),
+                pull_request(),
+                pull_request(
+                    state="MERGED",
+                    merged_at="2026-07-24T10:45:21Z",
+                ),
+            ]
+        )
+
+        # Act and Assert
+        with self.assertRaisesRegex(
+            SyncPrStatusCommentsError,
+            r"issue #44.*pull/17.*merged",
+        ) as error:
+            synchronize(client, "demo", apply=True)
+
+        self.assertEqual(
+            getattr(error.exception, "posted_urls", None),
+            (
+                "https://github.com/issue-owner/issues/"
+                "issues/44#issuecomment-100",
+            ),
+        )
+
 
 class AuditOutputTest(unittest.TestCase):
     def test_report_includes_counts_for_grouped_plans(self) -> None:
@@ -1027,7 +1083,7 @@ class MainTest(unittest.TestCase):
 
     def test_main_defaults_to_dry_run_without_mutation(self) -> None:
         # Arrange
-        FakeMainGhClient.configure(
+        client_factory = FakeMainGhClientFactory(
             issue_numbers=(44,),
             snapshots={
                 44: IssueSnapshot(
@@ -1048,7 +1104,7 @@ class MainTest(unittest.TestCase):
         stderr = io.StringIO()
 
         # Act
-        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+        with patch("sync_pr_status_comments.GhClient", client_factory):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = main(
                     [
@@ -1067,13 +1123,13 @@ class MainTest(unittest.TestCase):
         self.assertIn(f"mode={MODE_DRY_RUN}", stdout.getvalue())
         self.assertNotIn(POSTED_PREFIX, stdout.getvalue())
         self.assertNotIn(VERIFICATION_PASSED_LINE, stdout.getvalue())
-        self.assertIsNotNone(FakeMainGhClient.last_instance)
-        assert FakeMainGhClient.last_instance is not None
-        self.assertEqual(FakeMainGhClient.last_instance.posted, [])
+        self.assertIsNotNone(client_factory.last_instance)
+        assert client_factory.last_instance is not None
+        self.assertEqual(client_factory.last_instance.posted, [])
 
     def test_main_selects_mutation_only_with_apply(self) -> None:
         # Arrange
-        FakeMainGhClient.configure(
+        client_factory = FakeMainGhClientFactory(
             issue_numbers=(44,),
             snapshots={
                 44: IssueSnapshot(
@@ -1094,7 +1150,7 @@ class MainTest(unittest.TestCase):
         stderr = io.StringIO()
 
         # Act
-        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+        with patch("sync_pr_status_comments.GhClient", client_factory):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = main(
                     [
@@ -1114,13 +1170,13 @@ class MainTest(unittest.TestCase):
         self.assertIn(f"mode={MODE_APPLY}", stdout.getvalue())
         self.assertIn(POSTED_PREFIX, stdout.getvalue())
         self.assertIn(VERIFICATION_PASSED_LINE, stdout.getvalue())
-        self.assertIsNotNone(FakeMainGhClient.last_instance)
-        assert FakeMainGhClient.last_instance is not None
-        self.assertEqual(len(FakeMainGhClient.last_instance.posted), 1)
+        self.assertIsNotNone(client_factory.last_instance)
+        assert client_factory.last_instance is not None
+        self.assertEqual(len(client_factory.last_instance.posted), 1)
 
     def test_main_returns_non_zero_for_sync_error(self) -> None:
         # Arrange
-        FakeMainGhClient.configure(
+        client_factory = FakeMainGhClientFactory(
             issue_numbers=(44,),
             snapshots={
                 44: IssueSnapshot(
@@ -1143,7 +1199,7 @@ class MainTest(unittest.TestCase):
         stderr = io.StringIO()
 
         # Act
-        with patch("sync_pr_status_comments.GhClient", FakeMainGhClient):
+        with patch("sync_pr_status_comments.GhClient", client_factory):
             with redirect_stdout(stdout), redirect_stderr(stderr):
                 result = main(
                     [
@@ -1160,3 +1216,69 @@ class MainTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertEqual(stdout.getvalue(), "")
         self.assertIn("missing mergedAt", stderr.getvalue())
+
+    def test_main_returns_non_zero_for_invalid_repository_argument(self) -> None:
+        # Arrange
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        # Act
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            result = main(
+                [
+                    "--issue-repo",
+                    "invalid",
+                    "--pr-repo",
+                    "pr-owner/pr-repo",
+                    "--issue-tag",
+                    "demo",
+                ]
+            )
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.assertEqual(stdout.getvalue(), "")
+        self.assertIn(
+            "Error: issue repository must be an owner/repository string",
+            stderr.getvalue(),
+        )
+
+    def test_main_reports_posted_urls_before_verification_failure(self) -> None:
+        # Arrange
+        client = FakeSyncClient(
+            pull_request_states=[
+                pull_request(),
+                pull_request(),
+                pull_request(
+                    state="MERGED",
+                    merged_at="2026-07-24T10:45:21Z",
+                ),
+            ]
+        )
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+
+        # Act
+        with patch("sync_pr_status_comments.GhClient", lambda *_args: client):
+            with redirect_stdout(stdout), redirect_stderr(stderr):
+                result = main(
+                    [
+                        "--issue-repo",
+                        "issue-owner/issues",
+                        "--pr-repo",
+                        "pr-owner/pr-repo",
+                        "--issue-tag",
+                        "demo",
+                        "--apply",
+                    ]
+                )
+
+        # Assert
+        self.assertEqual(result, 1)
+        self.assertIn(f"mode={MODE_APPLY}", stdout.getvalue())
+        self.assertIn(POSTED_PREFIX, stdout.getvalue())
+        self.assertNotIn(VERIFICATION_PASSED_LINE, stdout.getvalue())
+        self.assertIn(
+            "post-apply verification found uncovered status pairs",
+            stderr.getvalue(),
+        )

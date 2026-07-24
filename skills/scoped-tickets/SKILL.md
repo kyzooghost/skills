@@ -28,7 +28,6 @@ Workflow-specific:
 - Ticket creation: `SCOPE_STATEMENT` - one sentence stating exactly what the new ticket covers
 - PR review: `PR` (number/URL) and `TICKET` (issue number the PR implements)
 - PR status comments:
-  - `ISSUE_TAG` - label defining the issue collection
   - `ISSUE_REPO` - repository containing the labeled issues and receiving comments
   - `PR_REPO` - base repository containing the linked PRs
 

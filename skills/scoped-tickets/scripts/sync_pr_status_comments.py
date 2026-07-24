@@ -21,6 +21,12 @@ COMMENT_HEADER = "For visibility, this issue has linked PR activity:"
 MODE_FIELD = "mode"
 MODE_APPLY = "apply"
 MODE_DRY_RUN = "dry-run"
+ISSUES_INSPECTED_FIELD = "issues_inspected"
+LINKED_PULL_REQUESTS_FIELD = "linked_pull_requests"
+ELIGIBLE_OPEN_FIELD = "eligible_open"
+ELIGIBLE_MERGED_FIELD = "eligible_merged"
+ALREADY_COVERED_FIELD = "already_covered"
+IGNORED_CLOSED_UNMERGED_FIELD = "ignored_closed_unmerged"
 COMMENTS_PLANNED_FIELD = "comments_planned"
 POSTED_FIELD = "posted"
 POSTED_PREFIX = f"{POSTED_FIELD}="
@@ -191,6 +197,17 @@ class SynchronizationResult:
     initial: AuditReport
     posted_urls: tuple[str, ...]
     verification: AuditReport
+
+
+class SynchronizationVerificationError(SyncPrStatusCommentsError):
+    """Raised when verification fails after one or more comments were posted."""
+
+    def __init__(self, result: SynchronizationResult) -> None:
+        super().__init__(_verification_failure_message(result.verification))
+        self.result = result
+        self.initial = result.initial
+        self.posted_urls = result.posted_urls
+        self.verification = result.verification
 
 
 GhRunner = Callable[[list[str]], dict[str, Any]]
@@ -382,7 +399,7 @@ def audit_repository(client: GhClient, issue_tag: str) -> AuditReport:
     )
 
 
-def _verification_failure(report: AuditReport) -> SyncPrStatusCommentsError:
+def _verification_failure_message(report: AuditReport) -> str:
     uncovered = []
     for plan in report.plans:
         for entry in plan.entries:
@@ -390,10 +407,14 @@ def _verification_failure(report: AuditReport) -> SyncPrStatusCommentsError:
                 f"issue #{plan.issue_number}: "
                 f"{entry.pull_request.url} - {entry.status}"
             )
-    return SyncPrStatusCommentsError(
+    return (
         "post-apply verification found uncovered status pairs: "
         + "; ".join(uncovered)
     )
+
+
+def _verification_failure(result: SynchronizationResult) -> SynchronizationVerificationError:
+    return SynchronizationVerificationError(result)
 
 
 def synchronize(
@@ -434,24 +455,28 @@ def synchronize(
         )
 
     verification = audit_repository(client, issue_tag)
-    if verification.plans:
-        raise _verification_failure(verification)
-    return SynchronizationResult(
+    result = SynchronizationResult(
         initial=initial,
         posted_urls=tuple(posted_urls),
         verification=verification,
     )
+    if verification.plans:
+        raise _verification_failure(result)
+    return result
 
 
 def format_audit_report(report: AuditReport, *, apply: bool) -> str:
     lines = [
         _report_line(MODE_FIELD, MODE_APPLY if apply else MODE_DRY_RUN),
-        f"issues_inspected={report.issues_inspected}",
-        f"linked_pull_requests={report.linked_pull_requests}",
-        f"eligible_open={report.eligible_open}",
-        f"eligible_merged={report.eligible_merged}",
-        f"already_covered={report.already_covered}",
-        f"ignored_closed_unmerged={report.ignored_closed_unmerged}",
+        _report_line(ISSUES_INSPECTED_FIELD, report.issues_inspected),
+        _report_line(LINKED_PULL_REQUESTS_FIELD, report.linked_pull_requests),
+        _report_line(ELIGIBLE_OPEN_FIELD, report.eligible_open),
+        _report_line(ELIGIBLE_MERGED_FIELD, report.eligible_merged),
+        _report_line(ALREADY_COVERED_FIELD, report.already_covered),
+        _report_line(
+            IGNORED_CLOSED_UNMERGED_FIELD,
+            report.ignored_closed_unmerged,
+        ),
         _report_line(COMMENTS_PLANNED_FIELD, len(report.plans)),
     ]
     for plan in report.plans:
@@ -813,9 +838,15 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
-    client = GhClient(args.issue_repo, args.pr_repo)
     try:
+        client = GhClient(args.issue_repo, args.pr_repo)
         result = synchronize(client, args.issue_tag, apply=args.apply)
+    except SynchronizationVerificationError as error:
+        print(format_audit_report(error.initial, apply=args.apply))
+        for url in error.posted_urls:
+            print(f"{POSTED_PREFIX}{url}")
+        print(f"Error: {error}", file=sys.stderr)
+        return 1
     except SyncPrStatusCommentsError as error:
         print(f"Error: {error}", file=sys.stderr)
         return 1
