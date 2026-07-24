@@ -140,6 +140,21 @@ class CommentCoverageTest(unittest.TestCase):
             (StatusEntry(pull_request=candidate, status=OPEN_STATUS),),
         )
 
+    def test_longer_pull_number_url_does_not_cover_shorter_pull_request(self) -> None:
+        # Arrange
+        candidate = pull_request(number=17)
+        other_url = "https://github.com/pr-owner/pr-repo/pull/170"
+        comments = (f"{other_url} - open",)
+
+        # Act
+        result = uncovered_entries(comments, (candidate,), "issue-owner/issues")
+
+        # Assert
+        self.assertEqual(
+            result,
+            (StatusEntry(pull_request=candidate, status=OPEN_STATUS),),
+        )
+
     def test_open_comment_does_not_cover_merged_status(self) -> None:
         # Arrange
         candidate = pull_request(state="MERGED", merged_at="2026-07-10T10:45:21Z")

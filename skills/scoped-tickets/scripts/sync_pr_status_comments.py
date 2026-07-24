@@ -73,7 +73,10 @@ def _line_mentions_pull_request(
     issue_repo: str,
 ) -> bool:
     normalized_line = line.casefold()
-    if pull_request.url.casefold() in normalized_line:
+    url_pattern = re.compile(
+        re.escape(pull_request.url.casefold()) + r"(?!\d)"
+    )
+    if url_pattern.search(normalized_line):
         return True
 
     qualified_pattern = re.compile(
