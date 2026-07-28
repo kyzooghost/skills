@@ -116,7 +116,7 @@ The "owner must not" list cites adjacent ticket numbers from the scope map so ev
 
 | Mode | Wraps | Scope-checks |
 |------|-------|--------------|
-| `scoped-planning /brainstorming` | `brainstorming` | The emerging spec/design - flag scope creep vs the ticket universe before the user-review gate. |
+| `scoped-planning /brainstorming` | `brainstorming` | The emerging spec/design - flag scope creep vs the ticket universe. |
 | `scoped-planning /grill-plan` | `grill-plan` | The grilled plan - flag unresolved decisions that drift outside ticket scope. |
 | `scoped-planning /writing-plans` | `writing-plans` | The task plan - flag any task that touches work owned by another ticket or outside the universe. |
 
@@ -124,7 +124,7 @@ Each stage keeps its own human review gate intact. `scoped-planning` is invoked 
 
 ## Bootstrap mode
 
-When the ticket universe is empty (new project), `scoped-planning /brainstorming` with no `--tickets` enters **bootstrap mode**: skip the Phase 0 scope-check. Run `brainstorming` to its full terminal state - spec written, self-reviewed, and committed per `brainstorming`'s own flow. Then, from that committed spec, help the user draft the first ticket(s) in the Agent Work Ticket format and create them via `gh issue create --label <label>`. Then exit - the user re-invokes with `--tickets` once the universe exists. Drafting tickets from the committed spec (not a half-formed design) ensures the seeded universe is correctly scoped.
+When the ticket universe is empty (new project), `scoped-planning /brainstorming` with no `--tickets` enters **bootstrap mode**: run the Phase 0 inventory (step 1, `gh issue list`) to detect the empty universe, then skip the remaining Phase 0 steps (2-6). Run `brainstorming` to its full terminal state - spec written, self-reviewed, and committed per `brainstorming`'s own flow. Then, from that committed spec, help the user draft the first ticket(s) in the Agent Work Ticket format and create them via `gh issue create --label <label>`. Then exit - the user re-invokes with `--tickets` once the universe exists. Drafting tickets from the committed spec (not a half-formed design) ensures the seeded universe is correctly scoped.
 
 ## Workflow
 
@@ -146,7 +146,7 @@ Run once at the start of every invocation (except bootstrap):
 - **Bootstrap mode** (empty universe): see the Bootstrap mode section above.
 - **Normal mode**: run `brainstorming` to its user-review gate. Then apply scope-check guardrails post-hoc, before the gate is passed:
   - **IN SCOPE**: design stays within the union of target tickets' owned scope. Silent pass; emit the spec as `brainstorming` would.
-  - **OWNED BY ANOTHER TICKET**: flag inline at the design point that collides. Name the owning ticket. Ask the user to narrow the design, reassign, or explicitly accept the cross-ticket work before the artifact is finalized.
+  - **OWNED BY ANOTHER TICKET**: flag inline at the design point that collides. Name the owning ticket. Ask the user to narrow the design, reassign, or explicitly accept the cross-ticket work before the artifact is handed off.
   - **GENUINE GAP**: flag inline at the unowned design point. **Stop and ask**: (i) create a gap ticket now (embedded template) or (ii) narrow the design to drop the gap.
 
 ### Mode: `/scoped-planning /grill-plan <plan>`
