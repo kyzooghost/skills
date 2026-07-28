@@ -172,3 +172,80 @@ The scope-check runs as a post-hoc guardrail at the wrapped skill's natural chec
 - **GENUINE GAP** - flag inline at the unowned work. **Stop and ask**: create a gap ticket (embedded template) or narrow the artifact to drop the gap.
 
 The final output is indistinguishable from the base skill's own output, except overscoped content has been flagged and resolved before the artifact is handed off.
+
+## Error handling and edge cases
+
+### Input errors
+
+- A target ticket is not in the `--label` universe -> stop, report which ticket(s), ask the user to confirm the label or ticket numbers.
+- `REPO` cannot be inferred and was not supplied -> stop, ask for `REPO`.
+- `gh issue list` returns zero open tickets carrying `--label` AND no `--tickets` given -> enter bootstrap mode.
+- `gh issue list` returns zero open tickets carrying `--label` AND `--tickets` given -> stop, ask the user to confirm the label; an empty universe means scope routing has no boundary to enforce.
+- A target ticket has no recognizable scope section -> stop, ask the user for the scope statement. Never infer scope from a ticket title alone.
+- `--tickets` omitted (and not bootstrap) -> stop, ask for `--tickets`. Target tickets are explicit; the skill does not infer them.
+- The wrapped skill token is not one of `/brainstorming`, `/grill-plan`, `/writing-plans` -> stop, report the unrecognized token, list the three valid modes.
+
+### Scope-map ambiguity
+
+- An artifact point touches an area that two tickets both appear to own -> flag the overlap inline with both ticket numbers; ask the user to resolve the boundary. Do not silently pick one.
+- The scope map cannot be built because tickets use non-standard headings -> stop, report which tickets are unparseable, ask the user to confirm the heading convention or supply scope statements.
+
+### Gap-ticket creation
+
+- User declines to create a gap ticket -> leave the gap flagged inline; do not file. Ask whether to narrow the artifact to drop the gap instead.
+- `gh issue create` fails -> report the error, stop, do not file. Already-filed tickets in the same batch remain filed; report their numbers.
+- A drafted gap ticket duplicates an existing open ticket the scope map missed -> do not file; note the possible duplicate URL and ask the user to confirm.
+
+### No mutations beyond gap tickets
+
+- The skill never edits existing issues, changes labels, closes issues, or mutates the wrapped skill's artifact beyond inline scope flags. The only GitHub mutation is `gh issue create` for approved gap tickets.
+
+## Invocation
+
+```
+/scoped-planning /brainstorming <idea> --tickets 4343,4380 --label synchronous-composability-demo
+/scoped-planning /grill-plan <plan> --tickets 4343,4380
+/scoped-planning /writing-plans <spec> --tickets 4343,4380
+/scoped-planning /brainstorming <idea>           # bootstrap mode (empty universe)
+```
+
+`--repo` is optional when tickets are given as full URLs (inferred); required when `--tickets` are bare numbers. `--label` defaults to `agent-work-ticket`. All scope-routing guarantees become built-in defaults, never restated by the user.
+
+## Verification
+
+Since this is a Markdown skill wrapping vendor skills, verification is static checks plus scenario exercises against this SKILL.md.
+
+### Static checks
+
+```bash
+# Self-check: this file must not reference the sibling scope-ticket skill
+rg -n 'scoped[-_]tickets' skills/scoped-planning/SKILL.md
+# Expected: no output
+
+# All three wrapped skills are referenced
+rg -n 'brainstorming|grill-plan|writing-plans' skills/scoped-planning/SKILL.md
+# Expected: matches in mode descriptions and workflow
+
+# Self-contained scope-routing concepts are all defined
+rg -n 'Scope inventory|IN SCOPE|OWNED BY ANOTHER TICKET|GENUINE GAP|Gap rule|Gap-ticket template|bootstrap|Guardrail behavior' skills/scoped-planning/SKILL.md
+# Expected: matches in workflow and classification sections
+
+# No em-dash (per workspace rule)
+rg -n $'\u2014' skills/scoped-planning/SKILL.md
+# Expected: no output
+```
+
+### Scenario exercises
+
+1. **Bootstrap, empty universe** - No `--tickets`, `gh issue list` returns zero. Output: run `brainstorming` to its terminal state (spec written + committed); then draft first ticket(s) in Agent Work Ticket format from that spec; create via `gh issue create`; exit.
+2. **Brainstorm, all in scope** - Design stays within `#4343` and `#4380`'s owned scope. Output: `brainstorming`'s normal spec, no inline flags.
+3. **Brainstorm, owned by another ticket** - A spec section touches `#4350`'s owned scope. Output: inline flag at the section, name `#4350`, ask user to narrow/reassign/accept.
+4. **Brainstorm, genuine gap** - A design point needs unowned work. Output: inline flag, stop and ask - create gap ticket or narrow.
+5. **Grill, unresolved decision drifts out of scope** - A grilled unresolved decision would commit to `#4350`'s work. Output: inline flag at the decision, ask user to narrow/reassign.
+6. **Writing-plans, task touches another ticket's scope** - A task line implements `#4350`'s scope. Output: inline flag at the task, ask user to drop/split/reassign.
+7. **Writing-plans, genuine gap task** - A task needs unowned work. Output: inline flag, stop and ask - create gap ticket or drop the task.
+8. **Gap ticket created** - User approves gap creation. Output: `gh issue create`, capture real number, surface it back.
+9. **Gap ticket declined** - User declines. Output: gap stays flagged inline, no filing; ask whether to narrow.
+10. **Two target tickets both appear to own the same area** - Overlap flagged inline with both numbers; ask user to resolve boundary.
+11. **Unrecognized wrapped skill** - User invokes `/scoped-planning /foo`. Output: stop, report unrecognized token, list three valid modes.
+12. **Target ticket not in label universe** - `--tickets 4343` but `#4343` lacks `--label`. Output: stop, report, ask to confirm.
