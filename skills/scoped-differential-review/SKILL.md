@@ -131,3 +131,93 @@ For every finding in `differential-review`'s report:
 The scope-adjusted verdict is the actionable verdict for the PR author and reviewer. The vendor's preserved verdict remains the security authority of record; it is never softened or hidden. When the two verdicts differ, the Scope Routing section states both explicitly, e.g. "Vendor verdict: REJECT. Scope-adjusted verdict: APPROVE - all blocking findings deferred to #4350, #4351; no in-scope blocking findings remain."
 
 Rationale: the skill's purpose is to make scope routing actionable. A bare vendor REJECT that ignores scope would defeat that purpose. Preserving the vendor verdict verbatim ensures the security authority is never masked, while the scope-adjusted verdict gives the PR author and reviewer a verdict they can act on without violating scope.
+
+## Error handling and edge cases
+
+### Input errors
+
+- A target ticket is not in the `LABEL` universe -> stop, report which ticket, ask the user to confirm the label or the ticket number.
+- `REPO` cannot be inferred and was not supplied -> stop, ask for `REPO`.
+- `gh issue list` returns zero open tickets carrying `LABEL` -> stop, ask the user to confirm the label; an empty universe means scope routing has no boundary to enforce.
+- A target ticket has no recognizable "owner may" / scope section -> stop, ask the user for the scope statement. Never infer scope from a ticket title alone.
+- `--tickets` omitted -> stop, ask for `--tickets`. Target tickets are explicit; the skill does not infer them from PR links.
+
+### Scope-map ambiguity
+
+- A finding touches an area that two target tickets both appear to own -> treat as IN SCOPE (A) but flag the overlap in the Scope Routing section with both ticket numbers, so the user can resolve the boundary. Do not silently pick one.
+- A finding touches an area owned by a target ticket AND another open ticket -> IN SCOPE (A) for the target ticket; note the adjacent ownership in the deferred section for visibility.
+- The scope map cannot be built because tickets use non-standard headings -> stop, report which tickets are unparseable, ask the user to confirm the heading convention or supply scope statements.
+
+### Gap-ticket creation
+
+- Batch approval declined -> leave drafts in the report, unfiled. Do not file a subset without re-confirmation.
+- `gh issue create` fails for one ticket in the batch -> report the error, stop, do not file the remaining tickets, do not post a partial result. Already-filed tickets in the batch remain filed; report their numbers.
+- A drafted gap ticket's "owner must not" list cannot cite adjacent tickets because the scope map is empty -> file with an empty "owner must not" list and flag the gap in the report.
+- A gap finding duplicates an existing open ticket the scope map missed (e.g. a ticket without the label) -> do not file; note in the report that the finding may be covered by `<URL>` and ask the user to confirm.
+
+### PR-scope violations
+
+- The PR implements work owned by another open ticket -> flag as a scope violation (category B variant). Do not ask the PR author to complete that work; the only valid recommendation is "revert/stub the work belonging to #N."
+- The PR implements work owned by NO ticket -> flag as a scope violation with no ticket to cite. Treat as a category-C gap AND a PR-scope violation; propose a gap ticket and recommend reverting the unscoped work from the PR.
+- The PR implements none of the target tickets' scope -> report "PR does not implement any target ticket's scope" at the top of the Scope Routing section; route findings as (B) or (C) accordingly.
+
+### differential-review failures
+
+- `differential-review` errors or emits no report -> stop, surface the vendor skill's error, do not produce a Scope Routing section (there is nothing to route).
+
+### No mutations beyond gap tickets
+
+- The skill never posts PR review comments, edits the PR, changes labels on existing issues, or closes issues. The only GitHub mutation is `gh issue create` for approved gap tickets.
+
+## Invocation
+
+```
+/scoped-differential-review <PR-URL> --tickets 4380,4343 --label synchronous-composability-demo --repo Consensys/zkevm-monorepo
+```
+
+`--repo` is optional when tickets are given as full URLs (inferred). All of the following from the original verbose prompt become built-in defaults, never restated:
+
+- "ensuring that review scope remains within #4380 and #4343" -> `--tickets 4380,4343`
+- "does not duplicate scope for other open tickets in repo:... label:..." -> `--label` + built-in no-duplication default
+- "For new findings, carefully consider whether they should be covered in #4343 or #4380 scope, or another available open ticket, or we should create a whole new ticket" -> built-in A/B/C classification + gap rule
+- "Please be careful not to introduce entirely new scope for this PR with your review findings" -> built-in no-new-scope guard
+
+## Verification
+
+Since this is a Markdown skill wrapping a vendor skill, verification is static checks plus scenario exercises against this SKILL.md.
+
+### Static checks
+
+```bash
+# No reference to scoped-tickets anywhere in this skill
+rg -n 'scoped-tickets|scoped_tickets' skills/scoped-differential-review/SKILL.md
+# Expected: no output
+
+# differential-review is referenced as the wrapped skill
+rg -n 'differential-review' skills/scoped-differential-review/SKILL.md
+# Expected: matches in the wrapper description and Phase 3
+
+# Self-contained scope-routing concepts are all defined
+rg -n 'Scope inventory|IN SCOPE|OWNED BY ANOTHER TICKET|GENUINE GAP|Gap rule|Proposed new tickets' skills/scoped-differential-review/SKILL.md
+# Expected: matches in workflow and classification sections
+
+# No em-dash (per workspace rule)
+rg -n $'\u2014' skills/scoped-differential-review/SKILL.md
+# Expected: no output
+```
+
+### Scenario exercises
+
+1. **Single target ticket, all findings in scope** - PR implements `#4343`; every `differential-review` finding touches `#4343`'s owned scope. Output: full report + Scope Routing with all findings as (A), no deferred, no gaps, no mutations.
+2. **Multi target tickets, findings split across them** - PR implements `#4343` and `#4380`; findings split between both owned scopes. Output: each finding assigned to its target ticket; no duplication; no gaps.
+3. **Finding owned by another open ticket** - A finding touches an area owned by `#4350` (not a target). Output: finding marked (B), deferred with `#4350`, no action requested from the PR author.
+4. **PR implements another ticket's work** - The PR contains code that implements `#4350`'s scope. Output: scope violation flagged - "revert/stub the work belonging to #4350." No request to complete it.
+5. **Genuine gap, batch approval granted** - A finding touches an area no open ticket owns. Output: gap ticket drafted using the self-contained template with adjacent tickets cited in "owner must not." User approves the batch. Skill runs `gh issue create` for each, captures real numbers, substitutes them into the Scope Routing section.
+6. **Genuine gap, batch approval declined** - Same as (5) but user declines. Output: drafts remain in the report unfiled; no `gh issue create` calls; no partial filing.
+7. **`gh issue create` fails mid-batch** - Two gap tickets approved; the first files successfully, the second errors. Output: report the error, stop, do not file remaining, report the first ticket's real number, leave the second as a draft.
+8. **Empty label universe** - `gh issue list --label <LABEL>` returns zero tickets. Output: stop, ask the user to confirm the label.
+9. **Target ticket not in the label universe** - `#4343` does not carry `LABEL`. Output: stop, report which ticket, ask the user to confirm.
+10. **Target ticket has no parseable scope section** - `#4343` has no "owner may" / equivalent. Output: stop, ask the user for the scope statement; do not guess.
+11. **Two target tickets both appear to own the same area** - Finding overlaps `#4343` and `#4380`. Output: treat as (A) IN SCOPE, flag the overlap with both ticket numbers in the Scope Routing section, ask the user to resolve the boundary.
+12. **differential-review emits no report** - The vendor skill errors. Output: surface the error, do not produce a Scope Routing section.
+13. **Vendor verdict conflicts with scope-adjusted verdict** - Vendor says REJECT due to two CRITICAL findings; both are classified (B) OWNED BY ANOTHER TICKET. Output: preserve vendor verdict "REJECT" verbatim in the report; emit scope-adjusted verdict "APPROVE - all blocking findings deferred to #N, #M; no in-scope blocking findings remain" at the top of the Scope Routing section; state both explicitly.
