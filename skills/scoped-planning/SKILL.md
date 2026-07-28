@@ -39,18 +39,18 @@ The authoritative set of recognized scope-section headings is: "The owner may", 
 
 ## IN/OWNED/GAP classification
 
-Applied to every overscoped point of the wrapped skill's artifact (a spec section, an unresolved decision, a task line) at the stage's natural checkpoint:
+Applied to every point of the wrapped skill's artifact (a spec section, an unresolved decision, a task line) at the stage's natural checkpoint:
 
 - **IN SCOPE** - the point touches the union of the target tickets' owned scope. Silent pass; emit the artifact as the base skill would.
 - **OWNED BY ANOTHER TICKET** - the point touches an area owned by a different open ticket in the scope map. Flag inline at the point of collision; name the owning ticket. Ask the user to narrow the artifact, reassign, or explicitly accept the cross-ticket work before handoff.
 - **GENUINE GAP** - the point touches an area no open ticket owns. Flag inline at the unowned work. **Stop and ask**: (i) create a gap ticket now (embedded template) or (ii) narrow the artifact to drop the gap.
-- **Uncertain mapping** - if you cannot map a point to a scope-map entry with confidence, default to GENUINE GAP and flag the uncertainty inline. The approval gate for gap tickets lets the user filter noise; do not interrupt the stage to ask per-point.
+- **Uncertain mapping** - if you cannot map a point to a scope-map entry with confidence, default to GENUINE GAP and flag the uncertainty inline. The approval gate for gap tickets lets the user filter noise; do not interrupt the stage to ask per-point about the uncertainty.
 
 Stubs, interfaces, TODOs, and hardcoded placeholders standing in for other tickets' unimplemented work are CORRECT by design - only verify the stub matches the agreed interface; do not flag them as overscope.
 
 ## Gap rule
 
-Draft each GENUINE GAP as a new ticket using the self-contained Agent Work Ticket template below. Present drafts under "Proposed new tickets". Request approval to file each via `gh issue create -R <REPO> --label <LABEL> -t "<title>" -b "<body>"`. Do not file unless approved. Capture the real number/URL of each filed ticket and surface it back to the user.
+Draft each GENUINE GAP as a new ticket using the self-contained Agent Work Ticket template below. Present drafts under "Proposed new tickets". Request approval before filing each gap ticket via `gh issue create -R <REPO> --label <LABEL> -t "<title>" -b "<body>"`. Do not file any gap ticket unless approved. Capture the real number/URL of each filed ticket and surface it back to the user.
 
 ## Self-contained gap-ticket template
 
