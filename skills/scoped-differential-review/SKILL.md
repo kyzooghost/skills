@@ -189,8 +189,8 @@ Since this is a Markdown skill wrapping a vendor skill, verification is static c
 ### Static checks
 
 ```bash
-# No reference to scoped-tickets anywhere in this skill
-rg -n 'scoped-tickets|scoped_tickets' skills/scoped-differential-review/SKILL.md
+# Self-check: this file must not reference the sibling scope-ticket skill
+rg -n 'scoped[-_]tickets' skills/scoped-differential-review/SKILL.md
 # Expected: no output
 
 # differential-review is referenced as the wrapped skill
