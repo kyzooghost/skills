@@ -5,9 +5,7 @@ description: Wraps the differential-review skill to scope its findings to a set 
 
 # scoped-differential-review
 
-Wraps exactly one vendor skill - `differential-review` (unmodified) - and applies self-contained ticket-scope routing to its findings. Runs a security review on a PR via `differential-review`, then classifies every finding against a scope map built from a GitHub issue-label universe: IN SCOPE (actionable against the PR), OWNED BY ANOTHER TICKET (deferred, no PR-author action), or GENUINE GAP (propose a new ticket). Generalizes single-ticket scope routing to a set of target tickets the PR implements.
-
-This skill is self-contained. All scope-routing logic - scope inventory, A/B/C classification, gap rule, gap-ticket template - is defined here. It does not reference or depend on any other scope-ticket skill.
+Wraps exactly one vendor skill - `differential-review` (unmodified) - and applies self-contained ticket-scope routing to its findings. Treat `differential-review` as a black box that emits a findings report; this skill then classifies every finding against a scope map built from a GitHub issue-label universe. Generalizes single-ticket scope routing to a set of target tickets the PR implements. All scope-routing logic - scope inventory, A/B/C classification, gap rule, gap-ticket template - is defined here.
 
 ## Inputs
 
@@ -32,7 +30,7 @@ gh issue list -R <REPO> --label <LABEL> --state open --limit 200 --json number,t
 
 For every ticket, extract what it OWNS ("The owner may" or equivalent) and EXCLUDES ("The owner must not" / "Not In Scope" or equivalent). Produce a scope map: ticket number -> one-line ownership statement. Treat every ticket's ownership as exclusive. If work appears under another ticket's "owner may", it is out of scope here, full stop.
 
-Recognized scope-section headings: "The owner may", "The owner must not", "Not In Scope", "Scope of Work", "Definition of Done". If a ticket uses none of these, see Error handling.
+The authoritative set of recognized scope-section headings is: "The owner may", "The owner must not", "Not In Scope", "Scope of Work", "Definition of Done". If a ticket uses none of these, see Error handling.
 
 ## A/B/C finding classification
 
@@ -125,7 +123,7 @@ For every finding in `differential-review`'s report:
 - Let *blocking-deferred* = blocking findings classified here as (B) OWNED BY ANOTHER TICKET or as a PR-scope violation to revert.
 - The scope-adjusted verdict is:
   - **APPROVE** when *blocking-in-scope* is empty and there are no PR-scope violations requiring revert.
-  - **CONDITIONAL** when *blocking-in-scope* is non-empty but no single in-scope finding is CRITICAL, OR when in-scope findings require fixes that can land in this PR.
+  - **CONDITIONAL** when *blocking-in-scope* is non-empty but no single in-scope finding is CRITICAL, OR when in-scope findings require fixes that can land in this PR, OR when the PR contains unscoped work requiring a trivial revert.
   - **REJECT** when any in-scope finding is CRITICAL, or when the PR contains unscoped work that must be reverted and the revert is non-trivial.
 
 The scope-adjusted verdict is the actionable verdict for the PR author and reviewer. The vendor's preserved verdict remains the security authority of record; it is never softened or hidden. When the two verdicts differ, the Scope Routing section states both explicitly, e.g. "Vendor verdict: REJECT. Scope-adjusted verdict: APPROVE - all blocking findings deferred to #4350, #4351; no in-scope blocking findings remain."
