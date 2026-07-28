@@ -111,7 +111,7 @@ The skill runs in five phases. Phases 1-2 are preparation, phase 3 delegates to 
 1. Parse `PR`, `TICKETS` (comma-separated, one or more), `LABEL`, `REPO` (infer from ticket URLs if absent).
 2. Run the scope inventory: `gh issue list -R <REPO> --label <LABEL> --state open --limit 200 --json number,title,body`.
 3. For every open ticket, extract OWNED and EXCLUDED. Build the scope map: ticket number -> one-line ownership statement.
-4. Fetch each target ticket in `TICKETS` via `gh issue view <N> -R <REPO>` and confirm it carries `LABEL`. Error and stop if a target ticket is not in the label universe.
+4. Fetch each target ticket in `TICKETS` via `gh issue view <N> -R <REPO>` and confirm it is OPEN and carries `LABEL`. Error and stop if a target ticket is closed, missing, or not in the label universe. A closed target ticket is not in the open universe and therefore cannot be a scope owner for this review.
 
 ### Phase 2 - Validate target-ticket scope coverage
 
@@ -127,23 +127,41 @@ The skill runs in five phases. Phases 1-2 are preparation, phase 3 delegates to 
 
 For every finding in `differential-review`'s report:
 
-1. Map the finding's affected code/area to a scope-map entry.
+1. Map the finding's affected code/area to a scope-map entry. **Cite the scope-map line (ticket number and its one-line ownership statement) used for each classification** so the routing is auditable.
 2. Classify:
    - **(A) IN SCOPE** - the finding touches a target ticket's owned scope. Keep it as an actionable finding against the PR.
    - **(B) OWNED BY ANOTHER TICKET** - the finding touches an area owned by a different open ticket in the scope map. Mark deferred; no action requested from the PR author. If the PR implements that area, flag it as a scope violation by the PR ("this belongs to #N; revert/stub it here").
    - **(C) GENUINE GAP** - the finding touches an area no open ticket owns. Do not ask the PR author to fix it. Draft a gap ticket.
+   - **Uncertain mapping** - if the agent cannot map a finding to a scope-map entry with confidence, default to (C) GENUINE GAP and flag the uncertainty in the Scope Routing section. The batch-approval gate for gap tickets lets the user filter noise; do not interrupt the run to ask per-finding.
 3. Stubs, interfaces, TODOs, and hardcoded placeholders standing in for other tickets' unimplemented work are CORRECT by design - only verify the stub matches the agreed interface; do not raise them as findings.
 
 ### Phase 5 - Emit report and handle gaps
 
-1. Emit `differential-review`'s full report unchanged.
+1. Emit `differential-review`'s full report unchanged, including its overall verdict (APPROVE/REJECT/CONDITIONAL).
 2. Append a `## Scope Routing` section containing:
+   - **Scope-adjusted verdict:** the skill's own verdict, computed per the Recommendation reconciliation rule below.
    - **In-scope findings (A):** each with its target-ticket assignment and file/line refs.
    - **Deferred - owned by other tickets (B):** one-liners with ticket numbers, no action requested.
    - **Scope violations by the PR:** PR work belonging to other tickets, with `#N`.
    - **Proposed new tickets (C):** full drafted ticket bodies using the self-contained template, or "No gaps found".
 3. If there are proposed gap tickets, show all drafts and request one batch approval to file them. On approval, run `gh issue create -R <REPO> --label <LABEL> -t "<title>" -b "<body>"` for each, capture the real number/URL, and substitute it back into the Scope Routing section. On decline, leave the drafts in the report unfiled.
 4. Never post PR comments, edit the PR, or mutate issues other than the approved gap-ticket creation. The skill's only mutations are gap-ticket creation after batch approval.
+
+### Recommendation reconciliation
+
+`differential-review` emits an overall verdict (APPROVE/REJECT/CONDITIONAL). The skill preserves that verdict verbatim in the report and additionally emits a **scope-adjusted verdict** at the top of the Scope Routing section. The scope-adjusted verdict is computed as follows:
+
+- Let *blocking* = findings the vendor classified as CRITICAL or HIGH.
+- Let *blocking-in-scope* = blocking findings classified here as (A) IN SCOPE.
+- Let *blocking-deferred* = blocking findings classified here as (B) OWNED BY ANOTHER TICKET or as a PR-scope violation to revert.
+- The scope-adjusted verdict is:
+  - **APPROVE** when *blocking-in-scope* is empty and there are no PR-scope violations requiring revert.
+  - **CONDITIONAL** when *blocking-in-scope* is non-empty but no single in-scope finding is CRITICAL, OR when in-scope findings require fixes that can land in this PR.
+  - **REJECT** when any in-scope finding is CRITICAL, or when the PR contains unscoped work that must be reverted and the revert is non-trivial.
+
+The scope-adjusted verdict is the actionable verdict for the PR author and reviewer. The vendor's preserved verdict remains the security authority of record; it is never softened or hidden. When the two verdicts differ, the Scope Routing section states both explicitly, e.g. "Vendor verdict: REJECT. Scope-adjusted verdict: APPROVE - all blocking findings deferred to #4350, #4351; no in-scope blocking findings remain."
+
+Rationale: the skill's purpose is to make scope routing actionable. A bare vendor REJECT that ignores scope would defeat that purpose. Preserving the vendor verdict verbatim ensures the security authority is never masked, while the scope-adjusted verdict gives the PR author and reviewer a verdict they can act on without violating scope.
 
 ## Invocation
 
@@ -243,6 +261,8 @@ rg -n $'\u2014' skills/scoped-differential-review/SKILL.md
 
 12. **differential-review emits no report** - The vendor skill errors. Output: surface the error, do not produce a Scope Routing section.
 
+13. **Vendor verdict conflicts with scope-adjusted verdict** - Vendor says REJECT due to two CRITICAL findings; both are classified (B) OWNED BY ANOTHER TICKET. Output: preserve vendor verdict "REJECT" verbatim in the report; emit scope-adjusted verdict "APPROVE - all blocking findings deferred to #N, #M; no in-scope blocking findings remain" at the top of the Scope Routing section; state both explicitly.
+
 ## Success criteria
 
-The skill is successful when a multi-ticket scoped differential review produces `differential-review`'s full report plus a Scope Routing section that assigns every finding to a target ticket, defers findings owned by other tickets without requesting PR-author action, drafts gap tickets for genuine gaps using the self-contained template, and creates gap tickets only after one batch approval - with zero reference to `scoped-tickets` anywhere in the SKILL.md.
+The skill is successful when a multi-ticket scoped differential review produces `differential-review`'s full report (with its vendor verdict preserved verbatim) plus a Scope Routing section that emits a scope-adjusted verdict, assigns every finding to a target ticket, defers findings owned by other tickets without requesting PR-author action, drafts gap tickets for genuine gaps using the self-contained template, and creates gap tickets only after one batch approval - with zero reference to `scoped-tickets` anywhere in the SKILL.md.
