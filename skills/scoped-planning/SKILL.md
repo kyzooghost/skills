@@ -16,7 +16,7 @@ This skill is self-contained. All scope-routing logic - scope inventory, IN/OWNE
 - `<wrapped-skill>` - the base skill to wrap: one of `/brainstorming`, `/grill-plan`, `/writing-plans`. This token selects the overlay mode; no separate `--mode` flag.
 - The wrapped skill's own inputs (idea/spec, plan draft, etc.) are passed through unchanged.
 
-`--repo` is required when `--tickets` are bare numbers; inferred from the git remote otherwise.
+`--repo` is required when `--tickets` are bare numbers; inferred from full ticket URLs when `--tickets` are given as full URLs.
 
 ## Built-in defaults (never restated by the user)
 
@@ -139,7 +139,7 @@ Run once at the start of every invocation (except bootstrap):
 3. Build the scope map: `{ticketNumber -> {owned, excluded}}`.
 4. Fetch each target ticket in `--tickets` via `gh issue view <N> -R <REPO>` and confirm it is OPEN and carries `--label`. If any target ticket is closed, missing, or not in the label universe: **Error - unknown target ticket**. Stop.
 5. Mark the union of the target tickets' owned scope as the in-scope region.
-6. If the map is empty and no `--tickets` given: enter **bootstrap mode**.
+6. If the map is empty and no `--tickets` given AND the wrapped skill is `/brainstorming`: enter **bootstrap mode**. If the map is empty, no `--tickets` given, and the wrapped skill is not `/brainstorming`: stop, ask for `--tickets` (bootstrap is brainstorming-only).
 
 ### Mode: `/scoped-planning /brainstorming <idea>`
 
@@ -179,7 +179,7 @@ The final output is indistinguishable from the base skill's own output, except o
 
 - A target ticket is not in the `--label` universe -> stop, report which ticket(s), ask the user to confirm the label or ticket numbers.
 - `REPO` cannot be inferred and was not supplied -> stop, ask for `REPO`.
-- `gh issue list` returns zero open tickets carrying `--label` AND no `--tickets` given -> enter bootstrap mode.
+- `gh issue list` returns zero open tickets carrying `--label` AND no `--tickets` given AND the wrapped skill is `/brainstorming` -> enter bootstrap mode. If the wrapped skill is not `/brainstorming`: stop, ask for `--tickets` (bootstrap is brainstorming-only).
 - `gh issue list` returns zero open tickets carrying `--label` AND `--tickets` given -> stop, ask the user to confirm the label; an empty universe means scope routing has no boundary to enforce.
 - A target ticket has no recognizable scope section -> stop, ask the user for the scope statement. Never infer scope from a ticket title alone.
 - `--tickets` omitted (and not bootstrap) -> stop, ask for `--tickets`. Target tickets are explicit; the skill does not infer them.
@@ -193,7 +193,7 @@ The final output is indistinguishable from the base skill's own output, except o
 ### Gap-ticket creation
 
 - User declines to create a gap ticket -> leave the gap flagged inline; do not file. Ask whether to narrow the artifact to drop the gap instead.
-- `gh issue create` fails -> report the error, stop, do not file. Already-filed tickets in the same batch remain filed; report their numbers.
+- `gh issue create` fails -> report the error, stop, do not file. Tickets already filed in this run remain filed; report their numbers.
 - A drafted gap ticket duplicates an existing open ticket the scope map missed -> do not file; note the possible duplicate URL and ask the user to confirm.
 
 ### No mutations beyond gap tickets
@@ -227,7 +227,7 @@ rg -n 'brainstorming|grill-plan|writing-plans' skills/scoped-planning/SKILL.md
 # Expected: matches in mode descriptions and workflow
 
 # Self-contained scope-routing concepts are all defined
-rg -n 'Scope inventory|IN SCOPE|OWNED BY ANOTHER TICKET|GENUINE GAP|Gap rule|Gap-ticket template|bootstrap|Guardrail behavior' skills/scoped-planning/SKILL.md
+rg -n 'Scope inventory|IN SCOPE|OWNED BY ANOTHER TICKET|GENUINE GAP|Gap rule|gap-ticket template|bootstrap|Guardrail behavior' skills/scoped-planning/SKILL.md
 # Expected: matches in workflow and classification sections
 
 # No em-dash (per workspace rule)
