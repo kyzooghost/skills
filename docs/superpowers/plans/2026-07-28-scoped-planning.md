@@ -549,6 +549,3 @@ git commit -m "docs(scoped-planning): implementation plan"
 ```
 
 Expected: one commit adding the plan document.
-
-
-
