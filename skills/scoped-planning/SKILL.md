@@ -132,7 +132,7 @@ Each mode follows the same shape: build scope map -> run wrapped skill (black bo
 
 ### Phase 0 - Scope inventory
 
-Run once at the start of every invocation (except bootstrap):
+Run once at the start of every invocation. In bootstrap mode, only step 1 runs (to detect the empty universe); steps 2-6 are skipped.
 
 1. List all open GitHub issues carrying `--label` via `gh issue list --label <label> --state open --json number,title,body`.
 2. For each issue, parse the recognized scope-section headings to extract owned scope ("The owner may" / "Scope of Work") and excluded scope ("The owner must not" / "Not In Scope").

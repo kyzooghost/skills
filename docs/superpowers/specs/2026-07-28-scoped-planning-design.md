@@ -2,7 +2,7 @@
 
 ## Summary
 
-A new skill `scoped-planning` that operates as a per-stage scope-check overlay across the planning lifecycle (`/brainstorming` -> `/grill-plan` -> `/writing-plans`). Each stage is invoked separately as `scoped-planning /<wrapped-skill>`, wrapping that stage's base skill as a black box and bolting a scope guard onto its artifact. The wrapped skill runs to its natural checkpoint (brainstorming's user-review gate, grill-plan's handoff, writing-plans' execution-handoff); scope-check guardrails are then applied post-hoc, before the artifact is handed off. The deliverable is the wrapped skill's normal output (spec / grilled plan / task plan), kept scope-clean - not a separate verdict report.
+A new skill `scoped-planning` that operates as a per-stage scope-check overlay across the planning lifecycle (`/brainstorming` -> `/grill-plan` -> `/writing-plans`). Each stage is invoked separately as `scoped-planning /<wrapped-skill>`, wrapping that stage's base skill as a black box and bolting a scope guard onto its artifact. The wrapped skill runs to its natural checkpoint (brainstorming's user-review gate, grill-plan's handoff, writing-plans' execution-handoff); scope-check guardrails are then applied post-hoc, before the artifact is handed off. The deliverable is the wrapped skill's normal output (spec / grilled plan / task plan), kept scope-clean before handoff - not a separate verdict report.
 
 The skill has zero reference to `scoped-tickets`. All scope-routing logic - scope inventory, IN/OWNED/GAP classification, gap rule, gap-ticket template - is self-contained inside this skill. Deleting `scoped-tickets` is a separate follow-up task, performed after `scoped-planning` and `scoped-differential-review` are both in place and validated on real work - not part of this skill's implementation.
 
@@ -195,7 +195,7 @@ On user approval, file via `gh issue create -R <REPO> --label <LABEL> -t "<title
 ### Gap-ticket creation
 
 - User declines to create a gap ticket -> leave the gap flagged inline; do not file. Ask whether to narrow the artifact to drop the gap instead.
-- `gh issue create` fails -> report the error, stop, do not file. Already-filed tickets in the same batch remain filed; report their numbers.
+- `gh issue create` fails -> report the error, stop, do not file. Tickets already filed in this run remain filed; report their numbers.
 - A drafted gap ticket duplicates an existing open ticket the scope map missed -> do not file; note the possible duplicate URL and ask the user to confirm.
 
 ### No mutations beyond gap tickets
