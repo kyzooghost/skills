@@ -413,12 +413,12 @@ rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md
 # Expected: no output
 
 # No lingering references to the removed workflows
-rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments' skills/create-scoped-tickets/SKILL.md
+awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md | rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments'
 # Expected: no output
 
 # Core sections are present
-rg -n '## Inputs|## Built-in defaults|## Workflow|### Phase 0|### Phase 1|### Phase 2|### Phase 3|### Phase 4|### Phase 5|## Author checklist|## Error handling|## Invocation|## Verification' skills/create-scoped-tickets/SKILL.md
-# Expected: one match per section
+awk '/^## Verification$/{print; exit} {print}' skills/create-scoped-tickets/SKILL.md | rg -n '^## Inputs$|^## Built-in defaults |^## Workflow$|^### Phase [0-5] |^## Author checklist |^## Error handling |^## Invocation$|^## Verification$'
+# Expected: exactly one match for each required heading
 
 # gh commands used
 rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
