@@ -19,7 +19,7 @@ The skill drafts tickets as text first, presents the full set for one batch appr
 3. **Route review findings** - [scoped-differential-review](../scoped-differential-review/SKILL.md) consumes selected ticket numbers to classify PR findings against the ticket universe.
 4. **Execute a completed plan** - [ship-from-plan](../ship-from-plan/SKILL.md) consumes the completed plan produced downstream and executes it through a reviewed draft PR. It does not require ticket numbers as a direct input.
 
-The Agent Work Ticket headings are a repository-local schema. **Seed** establishes the repository-local Agent Work Ticket format using the [Agent Work Ticket template](#agent-work-ticket), and **Append** expects the recognized headings when parsing existing tickets. Downstream skills recognize headings such as The owner may, The owner must not, Scope of Work, Not In Scope, and Definition of Done; they use the ownership and exclusion headings to build scope boundaries, while Definition of Done remains part of the recognized ticket structure. Preserve the template's structure when creating or amending tickets.
+The Agent Work Ticket headings are a repository-local schema. **Seed** establishes the repository-local Agent Work Ticket format using the [Agent Work Ticket template](#ticket-template), and **Append** expects the recognized headings when parsing existing tickets. Downstream skills recognize headings such as The owner may, The owner must not, Scope of Work, Not In Scope, and Definition of Done; they use the ownership and exclusion headings to build scope boundaries, while Definition of Done remains part of the recognized ticket structure. Preserve the template's structure when creating or amending tickets.
 
 ## Requirements
 
