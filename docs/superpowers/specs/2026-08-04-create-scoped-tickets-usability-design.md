@@ -54,9 +54,10 @@ Add a `Fits into the workflow` section immediately after the introduction. It sh
    `../ship-from-plan/SKILL.md`.
 
 Add a note that the Agent Work Ticket headings are a repository-local schema. Downstream
-skills parse headings such as `The owner may`, `The owner must not`, `Scope of Work`, and
-`Definition of Done` to build scope boundaries, so users should preserve the template's
-structure when creating or amending tickets.
+skills recognize headings such as `The owner may`, `The owner must not`, `Scope of Work`,
+`Not In Scope`, and `Definition of Done`; they use the ownership and exclusion headings to
+build scope boundaries, while `Definition of Done` remains part of the recognized ticket
+structure. Users should preserve the template's structure when creating or amending tickets.
 
 ### 2. Requirements and invocation
 
