@@ -223,6 +223,7 @@ Universe: zero open tickets with that label
 
 #### [draft #A] Reports API - create export jobs
 
+~~~markdown
 ## Agent Work Ticket
 
 ### Request / Outcome
@@ -277,9 +278,11 @@ Stop and ask for input if:
 If blocked, ask only the exact question needed to continue.
 
 * None known for this example.
+~~~
 
 #### [draft #B] Audit Trail - record export requests
 
+~~~markdown
 ## Agent Work Ticket
 
 ### Request / Outcome
@@ -334,6 +337,7 @@ Stop and ask for input if:
 If blocked, ask only the exact question needed to continue.
 
 * None known for this example.
+~~~
 
 **Batch approval:** Approve all, Approve subset (name the drafts), or Revise.
 
@@ -411,8 +415,12 @@ Static checks against this SKILL.md:
 set -euo pipefail
 
 # No em-dash (per workspace rule)
-rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md || true
-# Expected: no output
+if rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md; then
+  exit 1
+else
+  echo 'No em-dash found.'
+fi
+# Expected: no rg matches
 
 # No lingering references to the removed workflows
 if awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md | rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments'; then
@@ -424,9 +432,23 @@ fi
 rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
 # Expected: matches in Phase 0 and Phase 5
 
-# Onboarding sections and Skill-tool invocation are present
-rg -n '^## Fits into the workflow|^## Requirements|^## Glossary|^### Worked example - Seed mode|\$create-scoped-tickets' skills/create-scoped-tickets/SKILL.md
-# Expected: one or more matches for every pattern
+# Onboarding sections and Skill-tool invocation are present before Verification
+content_before_verification="$(awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md)"
+required_onboarding_patterns=(
+  '^## Fits into the workflow$'
+  '^## Requirements$'
+  '^## Glossary$'
+  '^### Worked example - Seed mode$'
+  'repository-local schema'
+  '\$create-scoped-tickets'
+)
+for pattern in "${required_onboarding_patterns[@]}"; do
+  if ! printf '%s\n' "$content_before_verification" | rg -n "$pattern" >/dev/null; then
+    printf 'Missing onboarding content: %s\n' "$pattern"
+    exit 1
+  fi
+done
+echo 'All onboarding content is present.'
 
 # The old slash-command form is absent; the regex is intentionally non-literal
 if rg -n '^[[:space:]]*/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then

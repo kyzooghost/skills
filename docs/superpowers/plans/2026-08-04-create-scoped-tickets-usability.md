@@ -189,6 +189,7 @@ Universe: zero open tickets with that label
 
 #### [draft #A] Reports API - create export jobs
 
+~~~markdown
 ## Agent Work Ticket
 
 ### Request / Outcome
@@ -243,9 +244,11 @@ Stop and ask for input if:
 If blocked, ask only the exact question needed to continue.
 
 * None known for this example.
+~~~
 
 #### [draft #B] Audit Trail - record export requests
 
+~~~markdown
 ## Agent Work Ticket
 
 ### Request / Outcome
@@ -300,6 +303,7 @@ Stop and ask for input if:
 If blocked, ask only the exact question needed to continue.
 
 * None known for this example.
+~~~
 
 **Batch approval:** Approve all, Approve subset (name the drafts), or Revise.
 ~~~~
@@ -308,16 +312,30 @@ Expected: the example demonstrates a coverage map, dependency order, two disjoin
 
 - [ ] **Step 2: Extend the documented verification commands**
 
-Replace the existing no-em-dash search with the escaped form rg -n $'\u2014' so the verification command does not match its own source.
+Replace the existing no-em-dash search with an explicit if/else check that exits 1 when rg finds an em dash and reports success otherwise.
 
 Replace the existing core-section check with an explicit per-heading count and add the onboarding and invocation checks after the existing gh issue list|gh issue create check in Verification:
 
 ~~~bash
 set -euo pipefail
 
-# Onboarding sections and Skill-tool invocation are present
-rg -n '^## Fits into the workflow|^## Requirements|^## Glossary|^### Worked example - Seed mode|\$create-scoped-tickets' skills/create-scoped-tickets/SKILL.md
-# Expected: one or more matches for every pattern
+# Onboarding sections and Skill-tool invocation are present before Verification
+content_before_verification="$(awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md)"
+required_onboarding_patterns=(
+  '^## Fits into the workflow$'
+  '^## Requirements$'
+  '^## Glossary$'
+  '^### Worked example - Seed mode$'
+  'repository-local schema'
+  '\$create-scoped-tickets'
+)
+for pattern in "${required_onboarding_patterns[@]}"; do
+  if ! printf '%s\n' "$content_before_verification" | rg -n "$pattern" >/dev/null; then
+    printf 'Missing onboarding content: %s\n' "$pattern"
+    exit 1
+  fi
+done
+echo 'All onboarding content is present.'
 
 # The old slash-command form is absent; the regex is intentionally non-literal
 if rg -n '^[[:space:]]*/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then
@@ -381,7 +399,11 @@ Run:
 set -euo pipefail
 
 git diff --check
-rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md || true
+if rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md; then
+  exit 1
+else
+  echo 'No em-dash found.'
+fi
 ~~~
 
 Expected: git diff --check exits successfully and the em-dash search prints no output.
