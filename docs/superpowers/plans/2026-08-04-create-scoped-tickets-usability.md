@@ -18,7 +18,7 @@
 - Use $create-scoped-tickets in the documented invocation and examples; do not leave the old slash-command invocation in the target skill.
 - Keep the Agent Work Ticket template and recognized scope headings unchanged.
 - Use regular hyphens instead of em dashes in all new Markdown.
-- The old-invocation verification must use a non-literal pattern such as /create-[[:lower:]-]+; do not put the contiguous old slash-command string into the skill merely to test for it.
+- The old-invocation verification must use a non-literal, line-anchored pattern such as ^[[:space:]]*/create-[[:lower:]-]+; do not put the contiguous old slash-command string into the skill merely to test for it.
 - Because this is documentation-only, validate with Markdown/static checks and diff inspection; do not invent runtime unit tests.
 
 ## File map
@@ -134,7 +134,7 @@ Expected: each new section and the Skill-tool invocation appears in the output.
 Run:
 
 ~~~bash
-if rg -n '/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then
+if rg -n '^[[:space:]]*/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then
   exit 1
 else
   echo 'No slash-command invocation remains.'
@@ -318,7 +318,7 @@ rg -n '^## Fits into the workflow|^## Requirements|^## Glossary|^### Worked exam
 # Expected: one or more matches for every pattern
 
 # The old slash-command form is absent; the regex is intentionally non-literal
-if rg -n '/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then
+if rg -n '^[[:space:]]*/create-[[:lower:]-]+' skills/create-scoped-tickets/SKILL.md; then
   exit 1
 else
   echo 'No slash-command invocation remains.'
