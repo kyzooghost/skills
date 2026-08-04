@@ -74,7 +74,7 @@ The skill drafts tickets as text first, presents the full set for one batch appr
 3. **Route review findings** - [scoped-differential-review](../scoped-differential-review/SKILL.md) consumes selected ticket numbers to classify PR findings against the ticket universe.
 4. **Execute a completed plan** - [ship-from-plan](../ship-from-plan/SKILL.md) consumes the completed plan produced downstream and executes it through a reviewed draft PR. It does not require ticket numbers as a direct input.
 
-The Agent Work Ticket headings are a repository-local schema. Downstream skills recognize headings such as The owner may, The owner must not, Scope of Work, Not In Scope, and Definition of Done; they use the ownership and exclusion headings to build scope boundaries, while Definition of Done remains part of the recognized ticket structure. Preserve the template's structure when creating or amending tickets.
+The Agent Work Ticket headings are a repository-local schema. **Seed** establishes the repository-local Agent Work Ticket format using the [Agent Work Ticket template](#agent-work-ticket), and **Append** expects the recognized headings when parsing existing tickets. Downstream skills recognize headings such as The owner may, The owner must not, Scope of Work, Not In Scope, and Definition of Done; they use the ownership and exclusion headings to build scope boundaries, while Definition of Done remains part of the recognized ticket structure. Preserve the template's structure when creating or amending tickets.
 
 ## Requirements
 
@@ -398,8 +398,8 @@ Run:
 ~~~bash
 set -euo pipefail
 
-git diff --check
-if rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md; then
+git diff --check 695bfd1..HEAD
+if rg -n $'\xE2\x80\x94' skills/create-scoped-tickets/SKILL.md; then
   exit 1
 else
   echo 'No em-dash found.'
@@ -417,12 +417,19 @@ set -euo pipefail
 
 rg -n '## Inputs|## Built-in defaults|## Workflow|### Phase 0|### Phase 1|### Phase 2|### Phase 3|### Phase 4|### Phase 5|## Author checklist|## Error handling|## Invocation|## Verification' skills/create-scoped-tickets/SKILL.md
 phase_0_text="$(awk '/^### Phase 0 - Universe inventory$/{found=1} found && /^### Phase 1 - Spec decomposition$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
-if ! printf '%s\n' "$phase_0_text" | rg -n '^[[:space:]]*gh issue list -R <REPO> --label' >/dev/null; then
+if ! printf '%s\n' "$phase_0_text" | rg -F -x '     gh issue list -R <REPO> --label "$label" --state open --limit 200 --json number,title,body,labels' >/dev/null; then
   echo 'Missing the exact gh issue list command in Phase 0.'
   exit 1
 fi
 phase_5_text="$(awk '/^### Phase 5 - File approved NEW drafts$/{found=1} found && /^## Error handling and edge cases$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
-if ! printf '%s\n' "$phase_5_text" | rg -n '^[[:space:]]*gh issue create[[:space:]]+' >/dev/null; then
+expected_phase_5_command="$(printf '%s\n' \
+  "gh issue create \\" \
+  "  -R <REPO> \\" \
+  "  --title \"<Title>\" \\" \
+  "  --body \"<full Agent Work Ticket body>\" \\" \
+  "  --label \"<label1>\" --label \"<label2>\" ...")"
+actual_phase_5_command="$(printf '%s\n' "$phase_5_text" | awk '/^gh issue create \\$/{capture=1} capture {print} /^  --label .*\.\.\.$/{exit}')"
+if [ "$actual_phase_5_command" != "$expected_phase_5_command" ]; then
   echo 'Missing the exact gh issue create command in Phase 5.'
   exit 1
 fi
@@ -448,7 +455,10 @@ expected_files=(
   'docs/superpowers/plans/2026-08-04-create-scoped-tickets-usability.md'
   'skills/create-scoped-tickets/SKILL.md'
 )
-mapfile -t changed_files < <(git diff --name-only "${base_commit}"..HEAD)
+changed_files=()
+while IFS= read -r changed_file; do
+  changed_files+=("$changed_file")
+done < <(git diff --name-only "${base_commit}"..HEAD)
 if [ "${#changed_files[@]}" -ne "${#expected_files[@]}" ]; then
   printf 'Expected %s changed artifacts, found %s.\n' "${#expected_files[@]}" "${#changed_files[@]}"
   printf '%s\n' "${changed_files[@]}"
@@ -470,11 +480,11 @@ git diff "${base_commit}"..HEAD -- skills/create-scoped-tickets/SKILL.md
 git status --short
 ~~~
 
-Expected: the diff is limited to the target skill, the Phase 0-5 workflow remains intact, the five selected usability findings are addressed, and no unrelated file is modified. The working tree is clean after any implementation commit.
+Expected: the diff is limited to the four expected artifacts, the Phase 0-5 workflow remains intact, the five selected usability findings are addressed, and no unrelated file is modified. The working tree is clean after any implementation or verification commit.
 
 - [ ] **Step 4: Do not create a no-op verification commit**
 
-If all checks pass and the diff review finds no issue, leave the two implementation commits as the final implementation history. There is no code or test artifact that requires a third commit.
+If all checks pass and the diff review finds no issue, leave the existing documentation, design, plan, and implementation commits as the final history. There is no code or test artifact that requires a no-op verification commit.
 
 ## Handoff
 
