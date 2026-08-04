@@ -1,16 +1,44 @@
 ---
 name: create-scoped-tickets
-description: Use when seeding or extending a GitHub ticket universe from a technical implementation spec. Decomposes a spec into mutually-exclusive Agent Work Tickets under one or more labels, checks the existing universe for scope overlap before appending, suggests amending existing tickets instead of duplicating scope, and files the drafted tickets in one batch after approval.
+description: Use when the user asks to seed or extend a GitHub label-scoped ticket set from a spec.
 ---
 
 # Create Scoped Tickets
 
-Turn a technical implementation spec into a set of mutually-exclusive Agent Work Tickets under a GitHub label universe. Two modes:
+Use this skill to seed or extend a GitHub label-scoped universe of mutually-exclusive Agent Work Tickets from a technical implementation spec.
 
 1. **Seed** - the label universe is empty. Decompose the spec into the first N tickets.
 2. **Append** - the label universe already has tickets. Decompose the spec, then only draft what is not already covered. Where the spec overlaps an existing open ticket, propose amending that ticket instead of filing a duplicate.
 
-The skill drafts tickets as text first, presents the full set for one batch approval, then files each via `gh issue create` on approval. It never edits or closes existing issues; overlap resolutions are proposed to the user in text form.
+The skill drafts tickets as text first, presents the full set for one batch approval, then files each approved new ticket via gh issue create. It never edits or closes existing issues; overlap resolutions are proposed to the user in text form.
+
+## Fits into the workflow
+
+1. **Seed or extend the boundary set** - [create-scoped-tickets](SKILL.md) creates or extends the labeled Agent Work Ticket universe.
+2. **Scope the design and plan** - [scoped-planning](../scoped-planning/SKILL.md) consumes selected ticket numbers to scope brainstorming, plan grilling, and implementation-plan writing.
+3. **Route review findings** - [scoped-differential-review](../scoped-differential-review/SKILL.md) consumes selected ticket numbers to classify PR findings against the ticket universe.
+4. **Execute a completed plan** - [ship-from-plan](../ship-from-plan/SKILL.md) consumes the completed plan produced downstream and executes it through a reviewed draft PR. It does not require ticket numbers as a direct input.
+
+The Agent Work Ticket headings are a repository-local schema. Downstream skills recognize headings such as The owner may, The owner must not, Scope of Work, Not In Scope, and Definition of Done; they use the ownership and exclusion headings to build scope boundaries, while Definition of Done remains part of the recognized ticket structure. Preserve the template's structure when creating or amending tickets.
+
+## Requirements
+
+Before starting, confirm:
+
+- A GitHub repository with Issues enabled.
+- The gh CLI installed and authenticated.
+- Permission to read issues and create new issues.
+- At least one usable label, or permission to create a missing label after confirmation.
+- A readable spec source.
+
+If a requested label does not exist, the skill reports it and asks whether to create it via gh label create; it never creates a label without confirmation.
+
+## Glossary
+
+- **Agent Work Ticket** - a GitHub issue with exclusive ownership, exclusions, dependencies, and verifiable completion criteria.
+- **Label universe** - all open issues in the repository carrying any requested label.
+- **Scope map** - the ownership and exclusion boundaries extracted from those issues.
+- **Amendment proposal** - text-only suggested changes to an existing issue; this skill never applies them automatically.
 
 ## Inputs
 
@@ -224,16 +252,18 @@ After all filings, print a receipt: for each draft letter, the assigned issue nu
 
 ## Invocation
 
-```
-/create-scoped-tickets <SPEC> --repo <REPO> --labels <label1>[,label2,...] [--scope-hint "<one-sentence hint>"]
-```
+Invoke this skill with:
+
+~~~text
+$create-scoped-tickets <SPEC> --repo <OWNER/REPO> --labels <label1>[,label2,...] [--scope-hint "<one-sentence hint>"]
+~~~
 
 Examples:
 
-```
-/create-scoped-tickets docs/spec.md --repo org/project --labels topic1
-/create-scoped-tickets docs/spec.md --repo org/project --labels topic1,topic2 --scope-hint "only §4 (execution layer)"
-```
+~~~text
+$create-scoped-tickets docs/spec.md --repo org/project --labels topic1
+$create-scoped-tickets docs/spec.md --repo org/project --labels topic1,topic2 --scope-hint "only §4 (execution layer)"
+~~~
 
 ## Verification
 
