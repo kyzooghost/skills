@@ -310,9 +310,11 @@ Expected: the example demonstrates a coverage map, dependency order, two disjoin
 
 Replace the existing no-em-dash search with the escaped form rg -n $'\u2014' so the verification command does not match its own source.
 
-After the existing gh issue list|gh issue create check in Verification, add:
+Replace the existing core-section check with an explicit per-heading count and add the onboarding and invocation checks after the existing gh issue list|gh issue create check in Verification:
 
 ~~~bash
+set -euo pipefail
+
 # Onboarding sections and Skill-tool invocation are present
 rg -n '^## Fits into the workflow|^## Requirements|^## Glossary|^### Worked example - Seed mode|\$create-scoped-tickets' skills/create-scoped-tickets/SKILL.md
 # Expected: one or more matches for every pattern
@@ -324,9 +326,35 @@ else
   echo 'No slash-command invocation remains.'
 fi
 # Expected: no rg matches
+
+# Every core heading appears exactly once before Verification
+core_text="$(awk '/^## Verification$/{print; exit} {print}' skills/create-scoped-tickets/SKILL.md)"
+required_headings=(
+  '## Inputs'
+  '## Built-in defaults (never restated by the user)'
+  '## Workflow'
+  '### Phase 0 - Universe inventory'
+  '### Phase 1 - Spec decomposition'
+  '### Phase 2 - Overlap classification (Append mode only)'
+  '### Phase 3 - Draft tickets'
+  '### Phase 4 - Present drafts for batch approval'
+  '### Phase 5 - File approved NEW drafts'
+  '## Author checklist (per drafted ticket, before Phase 4)'
+  '## Error handling and edge cases'
+  '## Invocation'
+  '## Verification'
+)
+for heading in "\${required_headings[@]}"; do
+  match_count="$(printf '%s\n' "$core_text" | rg -F -x "$heading" | wc -l | tr -d ' ' || true)"
+  if [ "$match_count" -ne 1 ]; then
+    printf 'Expected exactly one heading: %s (found %s)\n' "$heading" "$match_count"
+    exit 1
+  fi
+done
+echo 'All core sections appear exactly once.'
 ~~~
 
-Expected: the Verification section checks the five usability additions without reintroducing the forbidden old invocation string.
+Expected: the Verification section checks the five usability additions, rejects an old slash-command line, and proves every required core heading appears exactly once without matching verifier source text.
 
 - [ ] **Step 3: Commit the worked example and checks**
 
