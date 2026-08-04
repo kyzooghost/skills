@@ -378,8 +378,10 @@ Expected: one commit modifies only skills/create-scoped-tickets/SKILL.md.
 Run:
 
 ~~~bash
+set -euo pipefail
+
 git diff --check
-rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md
+rg -n $'\u2014' skills/create-scoped-tickets/SKILL.md || true
 ~~~
 
 Expected: git diff --check exits successfully and the em-dash search prints no output.
@@ -389,9 +391,14 @@ Expected: git diff --check exits successfully and the em-dash search prints no o
 Run:
 
 ~~~bash
+set -euo pipefail
+
 rg -n '## Inputs|## Built-in defaults|## Workflow|### Phase 0|### Phase 1|### Phase 2|### Phase 3|### Phase 4|### Phase 5|## Author checklist|## Error handling|## Invocation|## Verification' skills/create-scoped-tickets/SKILL.md
 rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
-rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments' skills/create-scoped-tickets/SKILL.md
+skill_core="$(awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md)"
+if printf '%s\n' "$skill_core" | rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments'; then
+  exit 1
+fi
 ~~~
 
 Expected: the core-section and GitHub-command searches produce matches; the stale-reference search produces no output.
@@ -401,6 +408,8 @@ Expected: the core-section and GitHub-command searches produce matches; the stal
 Run:
 
 ~~~bash
+set -euo pipefail
+
 git diff HEAD~2..HEAD -- skills/create-scoped-tickets/SKILL.md
 git status --short
 ~~~
