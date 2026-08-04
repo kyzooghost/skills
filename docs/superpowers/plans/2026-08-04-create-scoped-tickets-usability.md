@@ -362,7 +362,7 @@ required_headings=(
   '## Invocation'
   '## Verification'
 )
-for heading in "\${required_headings[@]}"; do
+for heading in "${required_headings[@]}"; do
   match_count="$(printf '%s\n' "$core_text" | rg -F -x "$heading" | wc -l | tr -d ' ' || true)"
   if [ "$match_count" -ne 1 ]; then
     printf 'Expected exactly one heading: %s (found %s)\n' "$heading" "$match_count"
@@ -416,7 +416,16 @@ Run:
 set -euo pipefail
 
 rg -n '## Inputs|## Built-in defaults|## Workflow|### Phase 0|### Phase 1|### Phase 2|### Phase 3|### Phase 4|### Phase 5|## Author checklist|## Error handling|## Invocation|## Verification' skills/create-scoped-tickets/SKILL.md
-rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
+phase_0_text="$(awk '/^### Phase 0 - Universe inventory$/{found=1} found && /^### Phase 1 - Spec decomposition$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
+if ! printf '%s\n' "$phase_0_text" | rg -n '^[[:space:]]*gh issue list -R <REPO> --label' >/dev/null; then
+  echo 'Missing the exact gh issue list command in Phase 0.'
+  exit 1
+fi
+phase_5_text="$(awk '/^### Phase 5 - File approved NEW drafts$/{found=1} found && /^## Error handling and edge cases$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
+if ! printf '%s\n' "$phase_5_text" | rg -n '^[[:space:]]*gh issue create[[:space:]]+' >/dev/null; then
+  echo 'Missing the exact gh issue create command in Phase 5.'
+  exit 1
+fi
 skill_core="$(awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md)"
 if printf '%s\n' "$skill_core" | rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments'; then
   exit 1
@@ -432,7 +441,32 @@ Run:
 ~~~bash
 set -euo pipefail
 
-git diff HEAD~2..HEAD -- skills/create-scoped-tickets/SKILL.md
+base_commit=695bfd1
+expected_files=(
+  'docs/todos/2026-07-29-create-scoped-tickets-usability.md'
+  'docs/superpowers/specs/2026-08-04-create-scoped-tickets-usability-design.md'
+  'docs/superpowers/plans/2026-08-04-create-scoped-tickets-usability.md'
+  'skills/create-scoped-tickets/SKILL.md'
+)
+mapfile -t changed_files < <(git diff --name-only "${base_commit}"..HEAD)
+if [ "${#changed_files[@]}" -ne "${#expected_files[@]}" ]; then
+  printf 'Expected %s changed artifacts, found %s.\n' "${#expected_files[@]}" "${#changed_files[@]}"
+  printf '%s\n' "${changed_files[@]}"
+  exit 1
+fi
+for expected_file in "${expected_files[@]}"; do
+  if ! printf '%s\n' "${changed_files[@]}" | rg -F -x "$expected_file" >/dev/null; then
+    printf 'Missing expected changed artifact: %s\n' "$expected_file"
+    exit 1
+  fi
+done
+for changed_file in "${changed_files[@]}"; do
+  if ! printf '%s\n' "${expected_files[@]}" | rg -F -x "$changed_file" >/dev/null; then
+    printf 'Unexpected changed artifact: %s\n' "$changed_file"
+    exit 1
+  fi
+done
+git diff "${base_commit}"..HEAD -- skills/create-scoped-tickets/SKILL.md
 git status --short
 ~~~
 

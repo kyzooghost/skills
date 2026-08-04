@@ -428,9 +428,18 @@ if awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md
 fi
 # Expected: no output
 
-# gh commands used
-rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
-# Expected: matches in Phase 0 and Phase 5
+# gh commands used in their respective workflow phases
+phase_0_text="$(awk '/^### Phase 0 - Universe inventory$/{found=1} found && /^### Phase 1 - Spec decomposition$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
+if ! printf '%s\n' "$phase_0_text" | rg -n '^[[:space:]]*gh issue list -R <REPO> --label' >/dev/null; then
+  echo 'Missing the exact gh issue list command in Phase 0.'
+  exit 1
+fi
+phase_5_text="$(awk '/^### Phase 5 - File approved NEW drafts$/{found=1} found && /^## Error handling and edge cases$/{exit} found {print}' skills/create-scoped-tickets/SKILL.md)"
+if ! printf '%s\n' "$phase_5_text" | rg -n '^[[:space:]]*gh issue create[[:space:]]+' >/dev/null; then
+  echo 'Missing the exact gh issue create command in Phase 5.'
+  exit 1
+fi
+echo 'Phase 0 and Phase 5 contain their required GitHub commands.'
 
 # Onboarding sections and Skill-tool invocation are present before Verification
 content_before_verification="$(awk '/^## Verification$/{exit} {print}' skills/create-scoped-tickets/SKILL.md)"
