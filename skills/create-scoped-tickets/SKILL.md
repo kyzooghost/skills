@@ -1,16 +1,38 @@
 ---
 name: create-scoped-tickets
-description: Use when seeding or extending a GitHub ticket universe from a technical implementation spec. Decomposes a spec into mutually-exclusive Agent Work Tickets under one or more labels, checks the existing universe for scope overlap before appending, suggests amending existing tickets instead of duplicating scope, and files the drafted tickets in one batch after approval.
+description: Decompose a technical implementation spec into mutually exclusive GitHub Agent Work Tickets under one or more labels, either seeding an empty label universe or appending to an existing one. Use when the user asks to seed or extend a GitHub label-scoped ticket set from a spec.
 ---
 
 # Create Scoped Tickets
 
-Turn a technical implementation spec into a set of mutually-exclusive Agent Work Tickets under a GitHub label universe. Two modes:
+Seed or extend a GitHub label-scoped universe of mutually exclusive Agent Work Tickets from a technical implementation spec.
 
 1. **Seed** - the label universe is empty. Decompose the spec into the first N tickets.
 2. **Append** - the label universe already has tickets. Decompose the spec, then only draft what is not already covered. Where the spec overlaps an existing open ticket, propose amending that ticket instead of filing a duplicate.
 
-The skill drafts tickets as text first, presents the full set for one batch approval, then files each via `gh issue create` on approval. It never edits or closes existing issues; overlap resolutions are proposed to the user in text form.
+Tickets are drafted as text first, presented as one set for one batch approval, then each approved new ticket is filed via gh issue create.
+
+## Fits into the workflow
+
+1. **Seed or extend the boundary set** - [create-scoped-tickets](SKILL.md) creates or extends the labeled Agent Work Ticket universe.
+2. **Scope the design and plan** - [scoped-planning](../scoped-planning/SKILL.md) consumes selected ticket numbers to scope brainstorming, plan grilling, and implementation-plan writing.
+3. **Route review findings** - [scoped-differential-review](../scoped-differential-review/SKILL.md) consumes selected ticket numbers to classify PR findings against the ticket universe.
+4. **Execute a completed plan** - [ship-from-plan](../ship-from-plan/SKILL.md) executes the completed plan produced downstream; it does not take ticket numbers as a direct input.
+
+The Agent Work Ticket headings are a repository-local schema. **Seed** establishes the format using the [Agent Work Ticket template](#ticket-template); **Append** expects the recognized headings when parsing existing tickets. Downstream skills use the ownership and exclusion headings (The owner may, The owner must not, Scope of Work, Not In Scope) to build scope boundaries; Definition of Done is also part of the recognized structure. Preserve the template's structure when creating or amending tickets.
+
+## Requirements
+
+- The gh CLI authenticated against `REPO`, with permission to read issues and create new issues.
+- At least one usable label. If a requested label does not exist, report it and ask whether to create it via gh label create; never create a label without confirmation.
+- A readable spec source.
+
+## Glossary
+
+- **Agent Work Ticket** - a GitHub issue with exclusive ownership, exclusions, dependencies, and verifiable completion criteria.
+- **Label universe** - all open issues in the repository carrying any requested label.
+- **Scope map** - the ownership and exclusion boundaries extracted from those issues.
+- **Amendment proposal** - text-only suggested changes to an existing issue; this skill never applies them automatically.
 
 ## Inputs
 
@@ -30,6 +52,18 @@ Bare ticket numbers in later cross-references require `REPO`; `REPO` cannot be i
 - No mutations besides filing: this skill never edits, closes, or relabels existing issues. Amendment proposals are text only.
 
 ## Workflow
+
+Copy this checklist and check off phases as you complete them:
+
+```
+Ticket Progress:
+- [ ] Phase 0: Universe inventory (scope map, Seed/Append mode)
+- [ ] Phase 1: Spec decomposition
+- [ ] Phase 2: Overlap classification (Append mode only)
+- [ ] Phase 3: Draft tickets
+- [ ] Phase 4: Present drafts for batch approval
+- [ ] Phase 5: File approved NEW drafts
+```
 
 ### Phase 0 - Universe inventory
 
@@ -71,7 +105,7 @@ Constraints on the candidate set:
 For each candidate, classify against the Phase 0 scope map:
 
 - **NEW** - candidate's owned scope is disjoint from every existing ticket. Draft it as a new ticket in Phase 3.
-- **AMEND** - candidate's owned scope overlaps an existing open ticket's "The owner may" or Definition of Done. Do not draft a new ticket. Draft an **amendment proposal** for the existing ticket: the concrete text to add or refine (Request/Outcome bullets, Scope of Work bullets, DoD items, Source Materials links), citing the spec section. The user decides whether and how to apply it; this skill does not edit issues.
+- **AMEND** - candidate's owned scope overlaps an existing open ticket's "The owner may" or Definition of Done. Do not draft a new ticket. Draft an **amendment proposal** for the existing ticket: the concrete text to add or refine (Request/Outcome bullets, Scope of Work bullets, DoD items, Source Materials links), citing the spec section.
 - **PARTIAL** - candidate's owned scope partially overlaps an existing ticket. Split the candidate:
   - The overlapping slice becomes an AMEND proposal.
   - The non-overlapping slice becomes a NEW candidate whose "The owner must not" explicitly cites the existing ticket by number.
@@ -86,7 +120,7 @@ Scoping rules per ticket:
 
 - Every bullet under "The owner may" must trace to the candidate's slice of `SPEC`. If a bullet cannot be traced, delete it.
 - **"The owner must not" is the most important section.** Build it from the union of the Phase 0 scope map and the sibling NEW candidates in this run: name each ticket (existing by number, sibling by draft label like `[draft #A]`) whose scope borders this one.
-- Where the ticket depends on work owned by another ticket (existing or sibling draft) that is not yet implemented, do NOT pull that work in. Specify the stub or interface to code against (name the interface and the owning ticket) and record the dependency in Background / Context.
+- Where the ticket depends on another ticket's unimplemented work, specify the stub or interface to code against (name the interface and the owning ticket) and record the dependency in Background / Context.
 - Definition of Done must be verifiable without any other ticket's unimplemented work; tests may use stubs.
 
 #### Ticket template
@@ -169,7 +203,9 @@ Ask one approval question with three permitted answers:
 - **Approve subset** - the user names the drafts to file; the rest are held.
 - **Revise** - the user gives feedback; return to Phase 3.
 
-Amendment proposals are never filed by this skill; they are handed to the user as text regardless of approval choice.
+Amendment proposals are handed to the user as text regardless of approval choice.
+
+See [references/worked-example.md](references/worked-example.md) for a complete Seed-mode example of this output.
 
 ### Phase 5 - File approved NEW drafts
 
@@ -224,48 +260,19 @@ After all filings, print a receipt: for each draft letter, the assigned issue nu
 
 ## Invocation
 
-```
-/create-scoped-tickets <SPEC> --repo <REPO> --labels <label1>[,label2,...] [--scope-hint "<one-sentence hint>"]
-```
+Invoke this skill with:
+
+~~~text
+$create-scoped-tickets <SPEC> --repo <OWNER/REPO> --labels <label1>[,label2,...] [--scope-hint "<one-sentence hint>"]
+~~~
 
 Examples:
 
-```
-/create-scoped-tickets docs/spec.md --repo org/project --labels topic1
-/create-scoped-tickets docs/spec.md --repo org/project --labels topic1,topic2 --scope-hint "only §4 (execution layer)"
-```
+~~~text
+$create-scoped-tickets docs/spec.md --repo org/project --labels topic1
+$create-scoped-tickets docs/spec.md --repo org/project --labels topic1,topic2 --scope-hint "only §4 (execution layer)"
+~~~
 
 ## Verification
 
-Static checks against this SKILL.md:
-
-```bash
-# No em-dash (per workspace rule)
-rg -n $'—' skills/create-scoped-tickets/SKILL.md
-# Expected: no output
-
-# No lingering references to the removed workflows
-rg -n 'Workflow B|Workflow C|sync_pr_status_comments|PR review scoped|status comments' skills/create-scoped-tickets/SKILL.md
-# Expected: no output
-
-# Core sections are present
-rg -n '## Inputs|## Built-in defaults|## Workflow|### Phase 0|### Phase 1|### Phase 2|### Phase 3|### Phase 4|### Phase 5|## Author checklist|## Error handling|## Invocation|## Verification' skills/create-scoped-tickets/SKILL.md
-# Expected: one match per section
-
-# gh commands used
-rg -n 'gh issue list|gh issue create' skills/create-scoped-tickets/SKILL.md
-# Expected: matches in Phase 0 and Phase 5
-```
-
-Scenario exercises:
-
-1. **Seed, empty universe** - `LABELS=topic1`, zero open tickets. Spec has 4 atomic units. Output: 4 NEW drafts in dependency order, batch approval, 4 `gh issue create` calls, receipt with 4 issue numbers.
-2. **Append, all NEW** - `LABELS=topic1,topic2`, existing tickets under `topic1` cover an adjacent area not in the spec. All 3 spec candidates are NEW. Output: 3 NEW drafts with "The owner must not" citing existing ticket numbers.
-3. **Append, all AMEND** - The spec's units all overlap existing tickets. Output: amendment proposals only; nothing to file in Phase 5; explicit "fully covered" message.
-4. **Append, PARTIAL split** - One candidate overlaps existing ticket #N. Output: one AMEND proposal for #N plus one NEW draft whose "The owner must not" cites #N.
-5. **Overlap between two NEW candidates** - Phase 3 detects two drafts touching the same area. Output: merged or resplit before Phase 4; no overlap survives to approval.
-6. **Existing ticket with non-standard scope headings** - Ticket #M uses only "Description". Output: stop, ask user for #M's owned/excluded scope.
-7. **User approves subset** - User approves drafts A, C; holds B. Output: file A and C; B held in receipt.
-8. **Filing failure mid-batch** - `gh issue create` errors on draft B after A filed. Output: stop; report A filed, B failed, C not attempted.
-9. **SCOPE_HINT narrows the run** - Hint restricts decomposition to §4. Output: only §4 units become candidates; §3 spec content appears under "Uncovered spec sections" for user confirmation.
-10. **Two existing tickets appear to own the same area** - Phase 0 detects the conflict. Output: stop, ask user to resolve before decomposition.
+Static checks and scenario exercises for maintaining this skill live in [references/verification.md](references/verification.md). Run the static checks after editing this SKILL.md.
