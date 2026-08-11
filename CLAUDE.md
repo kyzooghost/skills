@@ -1,128 +1,36 @@
-# CLAUDE.md
+# Core behavior
 
-# Strict Rules
+Ask a focused question when missing information would materially affect scope, risk, or the result. Otherwise state consequential assumptions and proceed.
 
-If anything about the user's request is unclear, ask relentlessly - intent, technical implementation, system design, tradeoffs, UX, all of it.
+Before nontrivial edits, inspect relevant neighboring code. Follow local style and structure unless they conflict with explicit requirements or safety constraints.
 
-When writing unit tests, ensure they comply with /unit-test.
+Make the smallest coherent change. Do not add speculative functionality, refactor unrelated code, or leave artifacts made unused by your change.
 
-If an environment variable is added or removed, update the corresponding .env.* template files in the same project to match.
+Define observable success criteria and run the most relevant available checks before reporting completion. If validation cannot run, explain why.
 
-Use shared const enums or constant objects instead of raw string literals when introducing new string values. Never scatter raw strings across files.
+Prefer self-documenting code. Comments explain non-obvious decisions and constraints.
 
-When installing new dependencies, pin exact versions. Do NOT use floating versions, ranges, wildcards, or "latest".
+Never expose credentials, tokens, RPC URLs, or other secrets. Redact diagnostic context and never swallow errors silently.
 
-Code should be self-documenting for 'what'. Comments explain 'why' - decisions, constraints, non-obvious reasons - written for a developer with zero prior context. Be concise; every word should earn its place.
+When adding or removing environment variables, update maintained `.env.*` templates.
 
-Never commit code that logs sensitive details (credential tokens, RPC URLs, etc.) - mask them if they must appear in output. Unmasked logging for local debugging is acceptable if reverted before committing.
+Pin new direct dependencies exactly unless the repository explicitly requires another versioning policy.
 
-All bash scripts must start with `set -euo pipefail`.
+Use shared constants for repeated domain values, not one-off strings.
 
-Java/Kotlin: Use imports instead of fully qualified class names (e.g., `Response<String>` not `org.web3j.protocol.core.Response<String>`).
+Do not invent technical details. Distinguish sourced facts, inference, and uncertainty. Cite `file:line` for code-specific claims.
 
-Do not write with emdash `—`, write with regular dash `-` instead
+## Writing Style
 
-When corrected, after making a mistake or misinterpreting an instruction, write to `~/.claude/<owner>-<repo>-lessons.md`, where `<owner>-<repo>` is derived from `git remote get-url origin`:
-- One file per project; create it if missing
-- Per lesson: half-to-one-line summary header, then what went wrong, why, prevention rule as separate sections
-- At session start, review only the current project's lessons file
+Use clear technical English inspired by ASD-STE100. Do not claim formal compliance.
 
-# Coding Guidelines
-
-**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
-
-## 0. Match Local Conventions First
-
-**Before writing any implementation, examine 2-3 sibling files in the target directory.**
-
-If local patterns conflict with rules in this file or in skills, **local patterns win**. Your code should look like it belongs next to its neighbors.
-
-Check: Do similar files have unit tests? What's the naming convention? How are utilities structured?
-
-## 1. Think Before Coding
-
-**Don't assume. Don't hide confusion. Surface tradeoffs.**
-
-Before implementing:
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-
-## 2. Simplicity First
-
-**Minimum code that solves the problem. Nothing speculative.**
-
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-
-Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
-
-## 3. Surgical Changes
-
-**Touch only what you must. Clean up only your own mess.**
-
-When editing existing code:
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-- Remove imports/variables/functions that YOUR changes made unused.
-
-The test: Every changed line should trace directly to the user's request.
-
-## 4. Goal-Driven Execution
-
-**Define success criteria. Loop until verified.**
-
-Transform tasks into verifiable goals:
-- "Add validation" → "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" → "Write a test that reproduces it, then make it pass"
-- "Refactor X" → "Ensure tests pass before and after"
-
-For multi-step tasks, state a brief plan:
-```
-1. [Step] → verify: [check]
-2. [Step] → verify: [check]
-3. [Step] → verify: [check]
-```
-
-Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-## 5. Subagent Strategy
-
-**Use subagents liberally to keep the main context window clean.**
-
-- Offload research, exploration, and parallel analysis to subagents.
-- For complex problems, throw more compute at it via subagents.
-- One task per subagent for focused execution.
-
-## 6. Error Handling
-
-- Fail fast with clear, actionable messages
-- Never swallow exceptions silently
-- Include context (what operation, what input, suggested fix)
-
-# Technical Writing & Analysis
-
-When writing technical documentation or doing deep technical analysis:
-- Use EXACT values from source material - never approximate (e.g., "exactly 1 block" not "~1 block").
-- Do NOT invent steps, mechanisms, or details not in the source.
-- Flag uncertain claims with [NEEDS VERIFICATION] rather than guessing.
-- For protocol/contract descriptions, cite the specific file and line.
-
-## Mermaid Diagrams
-
-When creating Mermaid diagrams:
-- Never split a single statement across multiple lines. Each diagram statement (e.g., `A->>B:
-message`) must be on one line.
-- Validate syntax mentally before presenting - watch for stray `end` keywords, unclosed blocks,
-and incorrect nesting.
-
-## Tables
-
-When writing tables, provide both ASCII (plain text) and Markdown formats so the output is copy-pasteable into any tool.
+- Lead with the conclusion or required action.
+- Use common, direct words and one term for each concept.
+- Avoid needless jargon, idioms, filler, repetition, and ornamental prose.
+- Prefer active voice. Use imperative verbs for instructions.
+- Aim for 20 words per instructional sentence and 25 words per descriptive sentence.
+- Keep one topic in each paragraph.
+- Preserve exact code, commands, identifiers, quotations, and technical terms.
+- Accuracy, evidence, and necessary caveats take priority over brevity.
+- Use hyphens instead of em dashes.
+- Every word earns its place.
