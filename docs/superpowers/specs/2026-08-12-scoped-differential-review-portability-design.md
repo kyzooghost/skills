@@ -23,15 +23,23 @@ skills/scoped-differential-review/
 ├── scope-routing.md                  # A/B/C classification + gap rule
 ├── gap-ticket-template.md            # Template for proposed gap tickets
 ├── vendor/
-│   └── differential-review/          # Unmodified copy of Trail of Bits skill
-│       ├── SKILL.md
-│       ├── methodology.md
-│       ├── adversarial.md
-│       ├── patterns.md
-│       ├── reporting.md
-│       └── agents/
+│   └── differential-review/          # Full plugin tree (minus .claude-plugin/)
+│       ├── agents/
+│       │   └── adversarial-modeler.md
+│       ├── commands/
+│       │   └── diff-review.md
+│       ├── skills/
+│       │   └── differential-review/
+│       │       ├── SKILL.md
+│       │       ├── methodology.md
+│       │       ├── adversarial.md
+│       │       ├── patterns.md
+│       │       └── reporting.md
+│       └── README.md
 └── ATTRIBUTION.md                    # Source repo, commit SHA, license
 ```
+
+Vendor the full plugin tree so the adversarial modeler agent (used for high-risk findings) works as authored. Exclude `.claude-plugin/plugin.json` (Claude Code-specific registration, not needed when vendored).
 
 Progressive disclosure: SKILL.md covers workflow and decision points. Reference files hold classification logic and templates. All one level deep from SKILL.md.
 
@@ -144,14 +152,19 @@ For richer ticket structure, see the `create-scoped-tickets` skill.
 # Attribution
 
 Source: https://github.com/trailofbits/skills
-Path: plugins/differential-review/skills/differential-review/
+Path: plugins/differential-review/ (full plugin tree, minus .claude-plugin/)
 Commit: <SHA at time of vendoring>
-License: <license from source repo>
+License: CC BY-SA 4.0 (see LICENSE in this directory)
 Vendored: <date>
 
 This is an unmodified copy. To update, replace the contents of this
 directory with the corresponding folder from the source repository.
+
+This wrapper skill (scoped-differential-review) constitutes an adaptation
+of the vendored material under CC BY-SA 4.0 terms.
 ```
+
+Include a copy of the CC BY-SA 4.0 license text as `vendor/differential-review/LICENSE`.
 
 ## Changes from current skill
 
