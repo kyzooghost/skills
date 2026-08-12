@@ -77,6 +77,7 @@ For every ticket in the label universe:
    - **EXCLUDED**: work explicitly out of scope.
 3. Infer from any available signal: acceptance criteria, task lists, headings, "out of scope" language, description, title.
 4. If a ticket is too vague to extract any ownership boundary, mark as "unparseable" in the scope map. Note in the report. Continue with remaining tickets.
+5. If ALL target tickets are unparseable, stop and report the error. At least one target ticket must have a parseable ownership boundary to route findings against.
 
 ### Scope map display
 
