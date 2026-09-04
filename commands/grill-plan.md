@@ -5,7 +5,8 @@ Pressure-test this plan by spending human attention only on unresolved decisions
 1. Read the active plan or design document.
 2. Inspect the codebase, documentation, and history for answers available locally.
 3. Build a private inventory of unresolved decisions and their dependencies.
-4. If the proposal contains multiple independent subsystems, recommend decomposition before starting a long interview.
+4. Flag unnecessary complexity, brittle test strategies, and overengineering. Prefer the simplest design that satisfies the requirements.
+5. If the proposal contains multiple independent subsystems, recommend decomposition before starting a long interview.
 
 Classify each material uncertainty as:
 
@@ -19,7 +20,7 @@ Do not inventory or record trivial naming, formatting, or line-level choices.
 
 Ask a question only when all four conditions hold:
 
-1. The choice materially affects scope, architecture, product behavior, UX, security or privacy boundaries, irreversible data behavior, or external compatibility.
+1. The choice materially affects scope, architecture, product behavior, UX, security or privacy boundaries, irreversible data behavior, external compatibility, or introduces unnecessary complexity.
 2. At least two plausible answers have meaningfully different consequences.
 3. The answer cannot be inferred from the plan, codebase, prior decisions, history, or local conventions.
 4. Choosing autonomously would require product or design authority that the agent should not assume.
