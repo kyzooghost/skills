@@ -133,6 +133,7 @@ class CreatePrCommandTest(unittest.TestCase):
             "failing or pending checks",
             "merge conflict",
             "git push --set-upstream origin",
+            "--skip-prep",
             '--base "$PR_BRANCH"',
             "state",
             "later poll",

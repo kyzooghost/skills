@@ -71,7 +71,7 @@ Copy only the user's unpushed commits and uncommitted changes from the starting 
 
 If the child worktree is dirty, run `/commit` there. Do not create an empty commit.
 
-Push, then invoke publish as `/create-pr --base "$PR_BRANCH"` in the child worktree. Ignore any user-supplied `--base`.
+Push, then follow `commands/create-pr.md` in the child worktree as `/create-pr --skip-prep --base "$PR_BRANCH"`. Do not run normal prep again. Ignore any user-supplied `--base`.
 
 ```bash
 git push --set-upstream origin "$BRANCH_NAME"
