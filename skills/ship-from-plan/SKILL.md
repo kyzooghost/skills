@@ -1,13 +1,13 @@
 ---
 name: ship-from-plan
-description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green draft pull request with explicitly selected implementer and reviewer models.
+description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green pull request marked ready for review, with explicitly selected implementer and reviewer models.
 ---
 
 # Ship From Plan
 
 ## Overview
 
-Execute one completed implementation plan through isolation, implementation, draft PR creation, CI convergence, and differential-review convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
+Execute one completed implementation plan through isolation, implementation, ready PR creation, CI convergence, and differential-review convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
 
 Invocation grants standing authorization for all AI-resolvable edits, commits, and pushes. Do not pause at nested routine approval gates. Human authority is still required for product, protocol, security-boundary, irreversible-data, and external-compatibility decisions.
 
@@ -80,7 +80,7 @@ Handle implementer status:
 
 Do not impose a fixed retry count on context enrichment or task decomposition. Do not invoke `finishing-a-development-branch`.
 
-## Stage 3: Create a Draft PR
+## Stage 3: Create a Ready PR
 
 Require a named feature branch. Push it before PR creation:
 
@@ -93,13 +93,20 @@ git push --set-upstream origin "$BRANCH"
 
 Record `HEAD` before invoking create-PR.
 
-Invoke `/create-pr --draft`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
+Invoke `/create-pr` without `--draft`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
 
-Require a PR number, URL, and draft state. Stop if creation fails or the platform cannot preserve draft state.
+Require a PR number and URL. The PR is ready for review by default. If it is draft, mark it ready:
+
+```bash
+set -euo pipefail
+if [ "$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft)" = "true" ]; then
+  gh pr ready "$PR_NUMBER"
+fi
+```
+
+Stop if creation fails or the PR cannot be marked ready. Do not pass `--draft`. Do not run `gh pr ready --undo`.
 
 If `/create-pr` changed `HEAD`, run another whole-branch review with `REVIEWER_MODEL`, resolve every AI-owned finding, and push the reviewed head before Stage 4.
-
-Never mark the PR ready in this stage.
 
 ## Stage 4: Converge CI
 
@@ -118,7 +125,7 @@ For a terminal failing head:
 5. Apply all AI-resolvable fixes, commit with `fix(ci): resolve CI failures`, and push.
 6. Wait for checks on the new head to finish.
 
-If a fix requires human product or design authority, leave the PR draft and stop with the decision required.
+If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
 
 Track the number of failed checks after every completed fix round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
 
@@ -172,29 +179,31 @@ After triage:
 
 Repeat until no AI-resolvable finding remains. Stop after 3 consecutive full review rounds that do not reduce the unresolved AI-resolvable finding count.
 
-Human decisions do not stop triage of later findings, but any open decision keeps the PR draft.
+Human decisions do not stop triage of later findings. An open decision does not return the PR to draft. The PR stays ready.
 
 ## Final Readiness
 
-Mark the PR ready with:
+Confirm the PR is ready for review before reporting. Run this by default, including when the report status is `CONDITIONAL`:
 
 ```bash
 set -euo pipefail
-gh pr ready "$PR_NUMBER"
+if [ "$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft)" = "true" ]; then
+  gh pr ready "$PR_NUMBER"
+fi
 ```
 
-Only run that mutation when all conditions hold:
+Report status `CONDITIONAL` when any of these are true:
 
-- CI is green on the current head.
-- Differential review is clean or `NOT_APPLICABLE`.
-- No AI-resolvable finding remains.
-- No private decision entry has `Status: OPEN`.
+- CI is not green on the current head.
+- Differential review is neither clean nor `NOT_APPLICABLE`.
+- An AI-resolvable finding remains.
+- A private decision entry has `Status: OPEN`.
 
-Otherwise leave the PR draft and report status `CONDITIONAL`.
+`CONDITIONAL` changes the report. It does not return the PR to draft.
 
 Print:
 
-- PR URL, base, head, and draft/readiness state.
+- PR URL, base, head, and readiness state.
 - Implementation and CI commits.
 - Differential-review fix commits.
 - Differential-review status or `NOT_APPLICABLE` reason.
@@ -214,7 +223,7 @@ Stop and report actionable context for:
 - Ambiguous existing branch, worktree, or PR.
 - Isolation or baseline-test failure.
 - Blocker requiring another model or human authority.
-- Draft PR creation or draft-state failure.
+- PR creation failure, or failure to mark the PR ready.
 - Missing CI checks.
 - CI 3-round no-progress limit.
 - Differential-review 3-round no-progress limit.
