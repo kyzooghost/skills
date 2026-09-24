@@ -61,6 +61,25 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, command)
 
+    def test_skill_routes_one_prep_path_before_publish(self) -> None:
+        # Arrange
+        skill = REPO_ROOT / "skills" / "create-pr" / "SKILL.md"
+        required_fragments = (
+            "Skip prep",
+            "--skip-prep",
+            "references/stacked-prep.md",
+            "references/normal-prep.md",
+            "references/command.md",
+        )
+
+        # Act
+        text = skill.read_text(encoding="utf-8")
+
+        # Assert
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, text)
+
 
 if __name__ == "__main__":
     unittest.main()
