@@ -61,6 +61,23 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, command)
 
+    def test_publish_command_documents_skip_prep(self) -> None:
+        # Arrange
+        required_fragments = (
+            "--skip-prep",
+            "/create-pr [--base <branch>] [--draft]",
+            "/create-pr --update [--base <branch>]",
+            'gh pr create --base "$BASE_BRANCH" --draft',
+        )
+
+        # Act
+        command = COMMAND.read_text(encoding="utf-8")
+
+        # Assert
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, command)
+
     def test_skill_routes_one_prep_path_before_publish(self) -> None:
         # Arrange
         skill = REPO_ROOT / "skills" / "create-pr" / "SKILL.md"

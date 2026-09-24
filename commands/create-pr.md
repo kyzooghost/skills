@@ -6,11 +6,13 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 
 ```text
 /create-pr [--base <branch>] [--draft]
+/create-pr [--base <branch>] [--draft] [--skip-prep]
 /create-pr --update [--base <branch>]
 ```
 
 - `--base <branch>` uses the named PR base instead of resolving the repository default.
 - `--draft` creates a new draft PR.
+- `--skip-prep` skips branch prep. `--update` skips branch prep too. This command does not create the prep worktree. When prep already ran, publish from the prep worktree and its branch.
 - `--update --draft` is unsupported because draft conversion and PR content updates are separate mutations. Stop with: "Error: `--update --draft` is unsupported. Use `gh pr ready --undo` explicitly if the existing PR must return to draft."
 - Reject unknown flags and a missing value after `--base` before performing any GitHub mutation.
 
