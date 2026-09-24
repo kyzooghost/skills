@@ -13,19 +13,11 @@ Resolve the user's required friendly model inputs against the active agent envir
 
 ## Cursor mappings
 
-- `Grok 4.5 High` -> slug `cursor-grok-4.5-high`
-- `GLM 5.2` -> slug `glm-5.2-high`
-- `Claude Sonnet 5` -> slug `claude-sonnet-5-thinking-high`
-- `Claude Opus 4.8` -> slug `claude-opus-4-8-thinking-high`
-- `Composer 2.5 Fast` -> slug `composer-2.5-fast`
-- `GPT 5.4 Medium` -> slug `gpt-5.4-medium`
-- `GPT 5.6 SOL High` -> slug `gpt-5.6-sol-high`
-- `GPT 5.6 Terra Medium` -> slug `gpt-5.6-terra-medium`
+- `Grok 4.7` -> slug `cursor-grok-4.7-high`
 
 ## Codex mappings
 
-- `GPT 5.6 SOL High` -> model `gpt-5.6-sol`, reasoning effort `high`
-- `GPT 5.6 Terra Medium` -> model `gpt-5.6-terra`, reasoning effort `medium`
+- `Luna xHigh` -> model `gpt-6-luna`, reasoning effort `xhigh`
 
 ## Dispatch contract
 
