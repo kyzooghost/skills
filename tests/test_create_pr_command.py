@@ -103,6 +103,30 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, text)
 
+    def test_stacked_prep_updates_the_remote_pr_before_the_child_branch(self) -> None:
+        # Arrange
+        path = REPO_ROOT / "skills" / "create-pr" / "references" / "stacked-prep.md"
+        required_fragments = (
+            "origin/$PR_BRANCH",
+            "Do not force-push",
+            "already up to date",
+            "statusCheckRollup",
+            "mergeStateStatus",
+            "failing or pending checks",
+            "merge conflict",
+            "git push --set-upstream origin",
+        )
+        self.assertTrue(path.is_file())
+
+        # Act
+        text = path.read_text(encoding="utf-8")
+
+        # Assert
+        self.assertNotIn("gh pr create", text)
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, text)
+
 
 if __name__ == "__main__":
     unittest.main()
