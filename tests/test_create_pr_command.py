@@ -87,6 +87,7 @@ class CreatePrCommandTest(unittest.TestCase):
             "references/stacked-prep.md",
             "references/normal-prep.md",
             "references/command.md",
+            "does not follow",
         )
 
         # Act
@@ -132,6 +133,9 @@ class CreatePrCommandTest(unittest.TestCase):
             "failing or pending checks",
             "merge conflict",
             "git push --set-upstream origin",
+            '--base "$PR_BRANCH"',
+            "state",
+            "later poll",
         )
         self.assertTrue(path.is_file())
 

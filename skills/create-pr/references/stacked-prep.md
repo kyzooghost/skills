@@ -49,15 +49,19 @@ There is no fixed poll timeout.
 
 - `mergeStateStatus` of `DIRTY` is a merge conflict. Stop. Do not create the child branch. The user cannot override this stop.
 - `mergeStateStatus` of `UNKNOWN` means GitHub is still calculating. Poll again.
-- An empty `statusCheckRollup` satisfies the CI part of the gate.
-- A check passes when its conclusion is `SUCCESS`, `SKIPPED`, or `NEUTRAL`.
-- A conclusion of `FAILURE`, `CANCELLED`, `TIMED_OUT`, or `ACTION_REQUIRED` stops prep.
-- A check with no conclusion yet is pending. Keep polling.
+- An empty `statusCheckRollup` on the first poll is not success. Poll again. If that later poll is still empty, the CI part of the gate is satisfied because no checks are configured.
+- Read both check-run `conclusion` and commit-status `state`.
+- A pass is `SUCCESS`, `SKIPPED`, or `NEUTRAL` on either field.
+- A failure stop is `FAILURE`, `CANCELLED`, `TIMED_OUT`, `ACTION_REQUIRED`, or `ERROR` on either field.
+- A `PENDING` `state` keeps polling.
+- A missing `conclusion` is not automatically pending when `state` is already terminal.
 - When the user explicitly asks to continue despite failing or pending checks, skip the CI wait. Still stop on `mergeStateStatus` `DIRTY`.
 
 Do not auto-fix the standing pull request's CI.
 
 ## Create the child branch
+
+Decide there is something to transplant before creating the child worktree. Use the same unpushed and uncommitted rules as `normal-prep.md`. If there is nothing to transplant, stop and do not create that worktree. There is nothing to publish.
 
 Fetch `origin/$PR_BRANCH` again. Create the child branch from that updated remote head, in a new worktree at `<repo-parent>/create-pr-worktrees/<child-name>`.
 
@@ -67,9 +71,7 @@ Copy only the user's unpushed commits and uncommitted changes from the starting 
 
 If the child worktree is dirty, run `/commit` there. Do not create an empty commit.
 
-If there is nothing to transplant, stop. There is nothing to publish.
-
-Push, then continue with `commands/create-pr.md` in the child worktree. The pull request base is `PR_BRANCH`.
+Push, then invoke publish as `/create-pr --base "$PR_BRANCH"` in the child worktree. Ignore any user-supplied `--base`.
 
 ```bash
 git push --set-upstream origin "$BRANCH_NAME"

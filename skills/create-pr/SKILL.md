@@ -11,6 +11,8 @@ Choose exactly one path, then follow `references/command.md` for publish.
 2. **Stacked prep.** The user explicitly named an open pull request to stack on, by number, URL, or branch. Read and follow `references/stacked-prep.md`.
 3. **Normal prep.** Every other new pull request. Read and follow `references/normal-prep.md`.
 
+A prep stop does not follow `references/command.md`.
+
 On normal prep, resolve `--base` before the branch is created. Stacked prep ignores `--base`. `--draft` stays on the publish path.
 
 Preserve the command behavior exactly, including the preview step before creating or updating a PR.
