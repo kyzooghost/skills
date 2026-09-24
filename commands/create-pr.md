@@ -5,14 +5,13 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 ## Usage
 
 ```text
-/create-pr [--base <branch>] [--draft]
+/create-pr [--base <branch>]
 /create-pr --update [--base <branch>]
 ```
 
 - `--base <branch>` uses the named PR base instead of resolving the repository default.
-- `--draft` creates a new draft PR.
-- `--update --draft` is unsupported because draft conversion and PR content updates are separate mutations. Stop with: "Error: `--update --draft` is unsupported. Use `gh pr ready --undo` explicitly if the existing PR must return to draft."
-- Reject unknown flags and a missing value after `--base` before performing any GitHub mutation.
+- New PRs are always ready for review. Draft PRs are not supported.
+- Reject unknown flags, including `--draft`, and a missing value after `--base` before performing any GitHub mutation.
 
 ## What This Command Does
 
@@ -26,7 +25,7 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 8. Generates a complete PR description
 9. Shows a preview to the user
 10. Scrubs sensitive content from the PR before publishing
-11. Pushes the branch, then creates a normal or draft PR, or updates an existing PR, against the resolved base
+11. Pushes the branch, then creates a ready PR, or updates an existing PR, against the resolved base
 
 ## Step 1: Repo Resolution
 
@@ -247,16 +246,10 @@ git push --set-upstream origin HEAD
 
 Then use exactly one PR mutation.
 
-For a new normal PR:
+For a new PR:
 
 ```bash
 gh pr create --base "$BASE_BRANCH" --title "{title}" --body "{description}"
-```
-
-For a new draft PR:
-
-```bash
-gh pr create --base "$BASE_BRANCH" --draft --title "{title}" --body "{description}"
 ```
 
 For an update:
@@ -272,7 +265,7 @@ After creation or update, show the PR URL and resolved base branch.
 - `gh` CLI not installed or not authenticated: "Error: `gh` CLI is not available or not authenticated. Run `gh auth login` first."
 - PR creation fails: show the error from `gh` and stop
 - Missing value after `--base`: "Error: `--base` requires a branch name."
-- Unsupported flag combination: "Error: `--update --draft` is unsupported. Use `gh pr ready --undo` explicitly if the existing PR must return to draft."
+- Unknown flag: "Error: unknown flag `{flag}`. Usage: `/create-pr [--base <branch>]` or `/create-pr --update [--base <branch>]`."
 - Base resolution failure: "Error: unable to resolve the PR base branch. Pass one explicitly with `--base <branch>`."
 - Base fetch failure: show the `git fetch origin "$BASE_BRANCH"` error and stop.
 
