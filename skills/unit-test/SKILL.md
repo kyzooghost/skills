@@ -94,10 +94,11 @@ Avoid:
 
 See [rules/anti-patterns.md](rules/anti-patterns.md) for examples.
 
-## Workflow
+## Test Scope and Verification
 
-1. Run unit tests after code changes: `yarn test:unit`
-2. Confirm all tests pass before commit
+Do not write tests for reversible, low-impact changes that mirror the implementation. If you do choose to verify your work with tests, make sure that the tests are meaningful and necessary to verify implementation.
+
+Run tests appropriate to the change and complete required checks. Once those pass, broaden or repeat testing only when new changes, failures, or unresolved concerns justify it; otherwise, continue toward completing the task.
 
 ## PR Checklist
 
