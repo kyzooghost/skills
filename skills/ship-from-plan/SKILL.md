@@ -93,7 +93,7 @@ git push --set-upstream origin "$BRANCH"
 
 Record `HEAD` before invoking create-PR.
 
-Invoke `/create-pr` without `--draft`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
+Invoke `/create-pr --skip-prep` without `--draft`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
 
 Require a PR number and URL. The PR is ready for review by default. If it is draft, mark it ready:
 

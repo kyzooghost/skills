@@ -144,6 +144,18 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, text)
 
+    def test_ship_from_plan_skips_create_pr_prep(self) -> None:
+        # Arrange
+        skill = REPO_ROOT / "skills" / "ship-from-plan" / "SKILL.md"
+
+        # Act
+        text = skill.read_text(encoding="utf-8")
+
+        # Assert
+        self.assertIn("/create-pr --skip-prep", text)
+        self.assertIn('Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`', text)
+        self.assertNotIn("/create-pr --draft", text)
+
 
 if __name__ == "__main__":
     unittest.main()
