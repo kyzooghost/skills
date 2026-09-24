@@ -19,13 +19,14 @@ This command auto-generates and creates GitHub PRs from git diff analysis with m
 1. Resolves the GitHub `owner/repo` from the local git remote
 2. Checks if a PR already exists for the current branch
 3. Resolves an explicit base branch, the existing PR base for updates, or the repository default branch
-4. Gets the diff against the resolved base branch
-5. Gets commit messages since branching from the resolved base branch
-6. Scans conversation context for related ticket references
-7. Generates a complete PR description
-8. Shows a preview to the user
-9. Scrubs sensitive content from the PR before publishing
-10. Creates a normal or draft PR, or updates an existing PR, against the resolved base
+4. Moves work on the base branch to a new branch, then commits uncommitted changes locally
+5. Gets the diff against the resolved base branch
+6. Gets commit messages since branching from the resolved base branch
+7. Scans conversation context for related ticket references
+8. Generates a complete PR description
+9. Shows a preview to the user
+10. Scrubs sensitive content from the PR before publishing
+11. Pushes the branch, then creates a normal or draft PR, or updates an existing PR, against the resolved base
 
 ## Step 1: Repo Resolution
 
@@ -64,7 +65,7 @@ Base precedence:
 
 The same `BASE_BRANCH` value must be used for diff collection, commit collection, changed-file collection, PR creation, and PR update.
 
-## Step 3: Gather Context
+## Step 3: Resolve the Base and Prepare the Branch
 
 If `BASE_BRANCH` was not supplied or obtained from an existing PR, resolve it from GitHub:
 
@@ -88,6 +89,33 @@ Fetch the selected base so local context reflects the remote branch:
 git fetch origin "$BASE_BRANCH"
 ```
 
+### Move work off the base branch
+
+Pushes to the base branch are usually restricted, so work there belongs on a new branch. Run this when the current branch is `BASE_BRANCH` or `HEAD` is detached:
+
+1. If `git rev-list --count "origin/$BASE_BRANCH"..HEAD` returns `0` and `git status --porcelain` is empty, stop with: "Nothing to publish: no commits ahead of `$BASE_BRANCH` and no uncommitted changes."
+2. Read the unpushed commits and the uncommitted diff. Choose a short kebab-case `NEW_BRANCH` name that states what the changes do. If `refs/heads/$NEW_BRANCH` or `refs/remotes/origin/$NEW_BRANCH` exists, append `-2`, `-3`, and so on until the name is free.
+3. Move the unpushed commits and the uncommitted changes to the new branch, then reset the local base branch to the remote. The new branch keeps every commit, so the reset loses nothing:
+
+```bash
+git switch -c "$NEW_BRANCH"
+git branch -f "$BASE_BRANCH" "origin/$BASE_BRANCH"
+```
+
+If `git branch -f` fails (for example, the base branch is checked out in another worktree), report the error and continue.
+
+On any other branch, stay on the current branch.
+
+### Commit uncommitted changes
+
+If `git status --porcelain` is not empty, list every modified, staged, and untracked path that Git does not ignore.
+
+If a path looks sensitive, stop and ask the user for manual review before committing. Sensitive paths include `.env*` (except `.env.example`, `.env.sample`, and `.env.template`), `*.pem`, `*.key`, `*.p12`, `id_rsa*`, and files named like credentials or secrets. Continue only after the user confirms which files to commit.
+
+Then run `/commit`. It stages all modified and new files when none are staged. Record the committed paths as `AUTO_COMMITTED_FILES` for the preview. These commits stay local until Step 10.
+
+## Step 4: Gather Context
+
 Get the diff against the resolved base branch:
 ```bash
 git diff "origin/$BASE_BRANCH"...HEAD
@@ -103,7 +131,7 @@ Get list of changed files:
 git diff "origin/$BASE_BRANCH"...HEAD --name-only
 ```
 
-If `git rev-list --count "origin/$BASE_BRANCH"..HEAD` returns `0`, stop with: "Error: no commits ahead of `$BASE_BRANCH`. Commit your changes first."
+If `git rev-list --count "origin/$BASE_BRANCH"..HEAD` returns `0`, stop with: "Nothing to publish: no commits ahead of `$BASE_BRANCH` and no uncommitted changes."
 
 Check for PR template:
 ```bash
@@ -112,7 +140,7 @@ find .github -iname 'pull_request_template.md' -o -iname 'pull_request_template'
 
 If found, read the template file. If a `.github/PULL_REQUEST_TEMPLATE/` directory exists with multiple templates, use `default.md` or the first file found.
 
-## Step 4: Detect Related Ticket
+## Step 5: Detect Related Ticket
 
 Scan the conversation context for ticket references:
 - Jira pattern: `[A-Z]+-\d+` (e.g., ABC-1234, PROJ-567)
@@ -124,7 +152,7 @@ Priority:
 
 Do NOT prompt the user for a ticket. Only offer to create one if the user explicitly asks.
 
-## Step 5: Generate PR Description
+## Step 6: Generate PR Description
 
 Analyze the diff and commits to generate the PR content.
 
@@ -167,20 +195,23 @@ Generate a concise title from the diff analysis. Use conventional commit format:
 | `**/api/**`, `**/*api*` | API contract tests pass |
 | Any config/env file | Verify deployment in target environment |
 
-## Step 6: Documentation Drift Check
+## Step 7: Documentation Drift Check
 
 Run the `/doc-update` command to detect and fix documentation drift caused by the changes on this branch.
 
 - If drift is found and fixed, the doc-update command will present changes and optionally commit them.
-- If doc fixes are committed, re-run Step 3 (Gather Context) to include the doc changes in the PR description.
+- If doc fixes are committed, re-run Step 4 (Gather Context) to include the doc changes in the PR description.
 - If no drift is found, proceed to the next step.
 
-## Step 7: Preview
+## Step 8: Preview
 
-Display the generated PR to the user in this format:
+Display the generated PR to the user in this format. Omit the branch line when Step 3 did not create a branch. Omit the file list when `AUTO_COMMITTED_FILES` is empty.
 
 ```
 ## PR Preview
+
+**Branch:** {NEW_BRANCH} (moved from {BASE_BRANCH})
+**Auto-committed files:** {AUTO_COMMITTED_FILES}
 
 **Title:** {generated title}
 
@@ -193,7 +224,7 @@ Display the generated PR to the user in this format:
 Ready to create this PR? (Proceeding unless you say otherwise)
 ```
 
-## Step 8: Sensitive Content Review
+## Step 9: Sensitive Content Review
 
 **Before publishing the PR**, review it (PR descriptions/titles, commit messages, issue/PR comments, code comments, changelog entries) for sensitive content picked up during the chat and strip it out. Never include:
 
@@ -204,11 +235,17 @@ Ready to create this PR? (Proceeding unless you say otherwise)
 
 Instead, describe the change technically and neutrally - keep incident context out of the PR.
 
-If the preview still contains any of the above, rewrite the title and/or body, show the updated preview, then proceed.
+If the preview still contains any of the above, rewrite the title and/or body, show the updated preview, then proceed. Commits are still local, so amend an auto-created commit message that contains any of the above.
 
-## Step 9: Create or Update
+## Step 10: Push, Then Create or Update
 
-Use exactly one mutation.
+Push the branch only after the preview and sensitive content review:
+
+```bash
+git push --set-upstream origin HEAD
+```
+
+Then use exactly one PR mutation.
 
 For a new normal PR:
 
@@ -241,8 +278,8 @@ After creation or update, show the PR URL and resolved base branch.
 
 ## Ground Rules
 
-- Do NOT prompt for user input unless explicitly requested (e.g., ticket creation)
+- Do NOT prompt for user input unless explicitly requested (e.g., ticket creation) or a sensitive path needs manual review (see Step 3)
 - Auto-generate everything from diff/context
-- Show preview before creating
-- Scrub sensitive content before publishing (see Step 8)
-- Never auto-commit - PR creation only
+- Commit uncommitted changes locally with `/commit`
+- Show preview before pushing or creating
+- Scrub sensitive content before publishing (see Step 9)
