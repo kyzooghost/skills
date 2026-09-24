@@ -33,6 +33,7 @@ coverage/
 
 # Local testing
 .skills-test/
+.worktrees/
 
 .claude
 .agents

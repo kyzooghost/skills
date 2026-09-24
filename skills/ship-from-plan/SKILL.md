@@ -93,7 +93,7 @@ git push --set-upstream origin "$BRANCH"
 
 Record `HEAD` before invoking create-PR.
 
-Invoke `/create-pr` without `--draft`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
+Invoke `/create-pr`. Add `--base "$BASE_BRANCH"` only when the user supplied `BASE_BRANCH`; otherwise allow `/create-pr` to resolve the configured repository default. Standing authorization covers its routine preview and any AI-resolvable `/doc-update` changes. Preserve create-PR sensitive-content scrubbing.
 
 Require a PR number and URL. The PR is ready for review by default. If it is draft, mark it ready:
 
@@ -104,7 +104,7 @@ if [ "$(gh pr view "$PR_NUMBER" --json isDraft --jq .isDraft)" = "true" ]; then
 fi
 ```
 
-Stop if creation fails or the PR cannot be marked ready. Do not pass `--draft`. Do not run `gh pr ready --undo`.
+Stop if creation fails or the PR cannot be marked ready. Do not run `gh pr ready --undo`.
 
 If `/create-pr` changed `HEAD`, run another whole-branch review with `REVIEWER_MODEL`, resolve every AI-owned finding, and push the reviewed head before Stage 4.
 

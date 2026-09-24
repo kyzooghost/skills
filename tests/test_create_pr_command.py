@@ -44,13 +44,12 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, command)
 
-    def test_command_supports_draft_creation_but_rejects_draft_updates(self) -> None:
+    def test_command_creates_ready_prs_only(self) -> None:
         # Arrange
         required_fragments = (
-            "/create-pr [--base <branch>] [--draft]",
+            "/create-pr [--base <branch>]",
             "/create-pr --update [--base <branch>]",
-            'gh pr create --base "$BASE_BRANCH" --draft',
-            "`--update --draft` is unsupported",
+            "Draft PRs are not supported",
         )
 
         # Act
@@ -60,6 +59,50 @@ class CreatePrCommandTest(unittest.TestCase):
         for fragment in required_fragments:
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, command)
+        self.assertNotIn("gh pr create --base \"$BASE_BRANCH\" --draft", command)
+        self.assertNotIn("[--draft]", command)
+
+    def test_command_moves_work_off_the_base_branch(self) -> None:
+        # Arrange
+        required_fragments = (
+            'git switch -c "$NEW_BRANCH"',
+            'git branch -f "$BASE_BRANCH" "origin/$BASE_BRANCH"',
+            "Nothing to publish",
+        )
+
+        # Act
+        command = COMMAND.read_text(encoding="utf-8")
+
+        # Assert
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, command)
+
+    def test_command_commits_locally_and_pushes_after_preview(self) -> None:
+        # Arrange
+        required_fragments = (
+            "/commit",
+            ".env*",
+            "manual review",
+            "Auto-committed files",
+            "git push --set-upstream origin HEAD",
+        )
+        forbidden_fragments = (
+            "Never auto-commit",
+            "Commit your changes first",
+        )
+
+        # Act
+        command = COMMAND.read_text(encoding="utf-8")
+
+        # Assert
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, command)
+        for fragment in forbidden_fragments:
+            with self.subTest(forbidden=fragment):
+                self.assertNotIn(fragment, command)
+        self.assertLess(command.index("## Step 8: Preview"), command.index("git push --set-upstream origin HEAD"))
 
 
 if __name__ == "__main__":
