@@ -29,7 +29,7 @@ A new pull request started by the user is prepared on a fresh branch before publ
 2. **Stacked prep.** The user explicitly named an open pull request to stack on, by number, URL, or branch. Read and follow `skills/create-pr/references/stacked-prep.md`.
 3. **Normal prep.** Every other new pull request. Read and follow `skills/create-pr/references/normal-prep.md`.
 
-After that path finishes, follow `commands/create-pr.md` for diff, description, documentation check, preview, sensitive-content scrub, and `gh pr create` or `gh pr edit`. `--draft` and an explicit `--base` stay on that shared path. `skills/create-pr/references/command.md` remains the symlink to `commands/create-pr.md`.
+After that path finishes, follow `commands/create-pr.md` for diff, description, documentation check, preview, sensitive-content scrub, and `gh pr create` or `gh pr edit`. `--draft` stays on that shared path. On normal prep, `--base` is resolved before the branch is created and is also the pull request base. Stacked prep ignores `--base`. `skills/create-pr/references/command.md` remains the symlink to `commands/create-pr.md`.
 
 `ship-from-plan` adds `--skip-prep` to its `/create-pr` invocation. It does not otherwise change.
 
@@ -57,14 +57,14 @@ Prep reads the unpushed commits and the uncommitted diff, then chooses a short k
 
 ## Normal prep
 
-1. Fetch `origin/BASE`.
-2. Create a new worktree and branch at `origin/BASE`.
+1. Resolve the branch start. An explicit `--base <branch>` replaces `BASE` for both the new branch and the pull request. When `--base` is omitted, both use the remote default branch. Fetch that ref.
+2. Create a new worktree and branch at that fetched ref.
 3. Cherry-pick the unpushed commits onto that branch, in order.
 4. Copy staged, unstaged, and untracked changes into the new worktree. Do not stash, reset, or otherwise modify the starting checkout.
 5. If any cherry-pick or copy conflicts, stop in the new worktree. Do not open the pull request.
 6. If the new worktree still has uncommitted changes, run `/commit` there. If the transplant was only commits and the worktree is clean, do not create an empty commit.
 7. If there are no unpushed commits and no uncommitted changes, stop. There is nothing to publish.
-8. Continue with the shared publish steps in the new worktree. The pull request base is `BASE`. An explicit `--base` replaces `BASE`.
+8. Continue with the shared publish steps in the new worktree. The pull request base is the same ref the new branch was created from.
 
 ## Stacked prep
 
@@ -75,7 +75,9 @@ This path runs only when the user explicitly asks to stack on an open pull reque
 3. Merge `origin/BASE` into that branch.
 4. Push a clean merge. When the merge conflicts, resolve the conflicts, commit the resolution, and push that commit to the standing pull request. Do not push the user's unpushed commits or uncommitted files there.
 5. If the conflict cannot be resolved, stop in that worktree. Do not push a conflicted tree.
-6. Poll GitHub until every required check on that pushed head reaches a terminal state and GitHub reports no merge conflict. There is no fixed poll timeout. Pending checks keep polling. If no required checks are configured, the CI part of the gate is satisfied. If a required check fails, stop. Do not create the child branch. Do not auto-fix the standing pull request.
+6. Poll GitHub until every check on that pushed head has succeeded and GitHub reports no merge conflict. Count every check GitHub reports for that head, not only branch-protection required checks. There is no fixed poll timeout. Pending checks keep polling. If no checks are configured, the CI part of the gate is satisfied. If any check fails or stays pending, stop. Do not create the child branch. Do not auto-fix the standing pull request.
+
+   Exception: when the user explicitly asks to continue despite failing or pending checks, skip the CI wait and create the child branch. A merge conflict does not qualify for that exception. GitHub still reporting a merge conflict stops prep.
 7. Create the new branch from the standing pull request's updated remote head. Name it from the transplanted changes, using the branch-name rule above.
 8. Copy only the user's unpushed commits and uncommitted changes. Run `/commit` in that worktree when it is dirty.
 9. Continue with the shared publish steps. The pull request base is the standing pull request's branch. Do not let `--base` point the stacked pull request at a different branch.
@@ -87,7 +89,8 @@ Prep stops and does not open the pull request when:
 - The transplant has no unpushed commits and no uncommitted changes.
 - A cherry-pick or file copy conflicts.
 - A stacked merge cannot be resolved.
-- The standing pull request's required checks fail, or GitHub still reports a merge conflict after the push.
+- Any check on the standing pull request fails or is still pending, unless the user explicitly asked to continue despite failing or pending checks.
+- GitHub still reports a merge conflict after the push. That stop has no override.
 - `origin` is missing, or the named standing pull request cannot be resolved.
 
 A conflict stop leaves the prep worktree in place. The starting checkout stays unchanged.
