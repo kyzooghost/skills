@@ -80,6 +80,29 @@ class CreatePrCommandTest(unittest.TestCase):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, text)
 
+    def test_normal_prep_transplants_without_publishing(self) -> None:
+        # Arrange
+        path = REPO_ROOT / "skills" / "create-pr" / "references" / "normal-prep.md"
+        required_fragments = (
+            "origin/BASE",
+            "--base",
+            "cherry-pick",
+            "git ls-files --others --exclude-standard",
+            "Do not stash",
+            "git push --set-upstream origin",
+            "nothing to publish",
+        )
+        self.assertTrue(path.is_file())
+
+        # Act
+        text = path.read_text(encoding="utf-8")
+
+        # Assert
+        self.assertNotIn("gh pr create", text)
+        for fragment in required_fragments:
+            with self.subTest(fragment=fragment):
+                self.assertIn(fragment, text)
+
 
 if __name__ == "__main__":
     unittest.main()
