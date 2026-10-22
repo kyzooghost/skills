@@ -1,6 +1,6 @@
 # Claude Command: Fix CI
 
-This command diagnoses and fixes CI failures on a GitHub PR by analyzing GitHub Actions logs, proposing fixes, and applying them with user approval.
+This command diagnoses and fixes CI failures on a GitHub PR by analyzing GitHub Actions logs, proposing fixes, applying them automatically, and pushing a commit to the PR branch.
 
 ## Usage
 
@@ -17,8 +17,8 @@ This command diagnoses and fixes CI failures on a GitHub PR by analyzing GitHub 
 4. Filters to failed checks only
 5. Downloads and analyzes failure logs
 6. Presents a consolidated diagnosis report
-7. Walks through each proposed fix with user approval
-8. Optionally commits the applied fixes
+7. Applies all proposed fixes automatically
+8. Commits the applied fixes and pushes them to the PR branch
 
 ## Step 1: Repo Resolution
 
@@ -43,6 +43,8 @@ gh pr list --head $(git branch --show-current) --json number,url --jq '.[0]'
 Behavior:
 - If PR number provided but PR doesn't exist: stop with "Error: PR #{PR_NUMBER} not found in {owner}/{repo}."
 - If no argument and no PR for current branch: stop with "Error: no PR exists for current branch. Specify a PR number: `/fix-ci 123`"
+- Resolve and record the PR head branch and head repository
+- If the checked-out local branch does not match the PR head branch, stop before editing files and ask the user to check out the PR branch
 - Otherwise: proceed with the resolved PR number
 
 ## Step 3: Fetch CI Status
@@ -144,33 +146,17 @@ Found {N} failing check(s).
 
 ## Step 6: Apply Fixes
 
-After presenting the report, walk through each proposed fix:
-
-```
-### Applying Fix 1 of {N}: {Job Name}
-
-**Proposed change to `path/to/file.ts`:**
-{show diff preview of the proposed edit}
-
-Apply this fix? (y/n/s)
-```
-
-**User responses:**
-- `y` or `yes`: Apply the fix using the Edit tool
-- `n` or `no`: Skip this fix
-- `s` or `skip`: Same as no
+After presenting the report, apply every proposed fix automatically. Do not ask the user to approve each fix.
 
 **For each applied fix:**
 1. Use the Edit tool to make the change
 2. Track the file as modified
 
-**For skipped fixes:**
-1. Note as skipped in the summary
-2. Continue to next fix
+If a fix cannot be applied cleanly, leave it unapplied, record why, and continue with the other fixes. Apply low-confidence fixes automatically, but flag them in the report and summary.
 
-If diagnosis confidence was "Low", remind the user: "Note: This fix has low confidence. Review carefully before applying."
+If diagnosis confidence was "Low", include: "Note: This fix has low confidence. Review it carefully."
 
-## Step 7: Summary and Commit
+## Step 7: Commit and Push to the PR Branch
 
 After processing all fixes, show a summary:
 
@@ -178,28 +164,23 @@ After processing all fixes, show a summary:
 ## Summary
 
 Applied: {N} fix(es)
-Skipped: {M} fix(es)
+Not applied: {M} fix(es)
 
 Modified files:
 - path/to/file1.ts
 - path/to/file2.ts
 - .github/workflows/ci.yml
-
-Commit these changes? (y/n)
 ```
 
-**If user says yes:**
-1. Stage all modified files: `git add {files}`
-2. Create commit with message: `fix(ci): resolve CI failures`
-3. Report: "Changes committed. Run `git push` to update the PR."
-4. Do NOT auto-push
-
-**If user says no:**
-1. Leave files modified but unstaged
-2. Report: "Changes left unstaged for your review."
+If at least one fix was applied:
+1. Confirm the checked-out branch is the resolved PR head branch and the configured push remote targets the PR head repository. If either check fails, stop before committing and report the issue.
+2. Stage only the files modified by this command: `git add {files}`
+3. Create a commit with message: `fix(ci): resolve CI failures`
+4. Push the commit to the PR head repository and branch without asking for confirmation.
+5. Report whether the commit and push succeeded. If pushing fails, report that the commit remains local and include the push error.
 
 **If no fixes were applied:**
-1. Skip the commit prompt
+1. Skip the commit and push
 2. Report: "No fixes were applied."
 
 ## Error Handling
@@ -210,6 +191,8 @@ Commit these changes? (y/n)
 | `gh` CLI not available | "Error: `gh` CLI is not available or not authenticated. Run `gh auth login` first." |
 | PR not found (404) | "Error: PR #{PR_NUMBER} not found in {owner}/{repo}." |
 | No PR for current branch | "Error: no PR exists for current branch. Specify a PR number: `/fix-ci 123`" |
+| Local branch does not match the PR head branch | Stop before editing and report the expected PR branch. |
+| No push remote targets the PR head repository | Stop before committing and report that the PR head remote is unavailable. |
 | All checks passing | "All CI checks are passing on PR #{PR_NUMBER}. Nothing to fix." |
 | Checks still running | "CI checks are still running on PR #{PR_NUMBER}. Wait for completion or re-run when ready." |
 | No check runs found | "No CI checks found for PR #{PR_NUMBER}." |
@@ -220,8 +203,9 @@ Commit these changes? (y/n)
 ## Ground Rules
 
 - Always analyze ALL failed checks before presenting the report
-- Never auto-apply fixes without user confirmation
-- Never auto-push to remote
+- Automatically apply all proposed fixes without asking for confirmation
+- Automatically commit applied fixes and push them to the resolved PR head branch
+- Verify the local branch and push remote match the PR head before pushing
 - If a fix cannot be determined, include it in the report with "Manual investigation needed"
 - Match existing code style when proposing fixes
 - For test failures, prefer fixing the code under test over modifying tests (unless the test itself is wrong)
