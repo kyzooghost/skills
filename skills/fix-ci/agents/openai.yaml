@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fix Ci"
+  short_description: "Run a repo command as a Codex skill"
+  default_prompt: "Use $fix-ci for this workflow."
