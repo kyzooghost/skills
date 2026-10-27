@@ -175,7 +175,7 @@ Generate a concise title from the diff analysis. Use conventional commit format:
 
 **Solution** - How the changes address the problem. Include code snippets if relevant (e.g., YAML config examples).
 
-**Related** - The detected ticket, or "None" if not found.
+**Related** - The detected ticket, or "None" if not found. Format each explicitly mentioned GitHub issue as a closing reference, such as `Closes #54`, not as a bare `#54`. Apply this format when filling a PR template too.
 
 **Scope** - Infer from file paths:
 - Infrastructure paths (e.g., `cluster-core/dev/`) → environment name
