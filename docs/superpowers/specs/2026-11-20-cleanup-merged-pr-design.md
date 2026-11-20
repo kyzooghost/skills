@@ -65,7 +65,15 @@ The script runs every check before it changes anything. On the first failed chec
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
    - file names that contain `credential` or `secret`
 
-   The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. It runs the same listing in each checked-out submodule, because `ls-files` does not descend into submodules and removal deletes their files too. Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
+   Matching ignores case. Paths with a `node_modules` or `site-packages` component are not matched, because they are package-manager output. Without this exemption, files such as viem's `createWebAuthnCredential.js` or certifi's `cacert.pem` refuse almost every JS or Python worktree.
+
+   The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. It runs the same listing in each checked-out submodule, because `ls-files` does not descend into submodules and removal deletes their files too.
+
+   `ls-files` prints an ignored nested git repository, such as a Foundry `lib/forge-std/` clone or an agent's `.worktrees/<name>`, as one entry with a trailing `/`. The script inspects each one recursively, with the same rules as a submodule git directory: a clean status, no stash, and no commits that are on no remote. Its ignored files go through the same sensitive check. A clean clone of a remote does not block cleanup.
+
+   A deinitialized submodule path that still contains files is refused, because `git status` and `submodule foreach` cannot see those files.
+
+   Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
 5. One of these conditions is true:
    - `gh pr list --head <branch> --state merged --json number,headRefOid` returns a PR, and the local branch tip equals its `headRefOid` or is an ancestor of it.
    - `git rev-list --count origin/<default>..<branch>` is `0`.
