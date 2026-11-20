@@ -102,6 +102,13 @@ class Fixture:
         self.git(self.main_checkout, "commit", "-m", "add submodule")
         self.git(self.main_checkout, "push", "origin", DEFAULT_BRANCH)
 
+    def ignore_locally(self, repo: Path, *patterns: str) -> None:
+        """Append patterns to the repository's `info/exclude`, so `git status` stays clean."""
+        exclude = Path(self.git(repo, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        with exclude.open("a", encoding="utf-8") as file:
+            file.write("".join(f"{pattern}\n" for pattern in patterns))
+
     def set_merged_prs(self, *head_oids: str) -> None:
         prs = [{"number": 7 + index, "headRefOid": oid} for index, oid in enumerate(head_oids)]
         self.env["GH_STUB_MERGED_PRS"] = json.dumps(prs)
@@ -439,6 +446,80 @@ class DeleteMergedBranchTest(unittest.TestCase):
         result = self.fixture.run_script("--repo", str(worktree))
 
         self.assert_refused(result, "sub/.env")
+
+    def test_ignored_nested_repository_with_unpushed_commit_is_refused(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, "tmp/")
+        self.fixture.git(worktree, "init", "tmp/helper")
+        self.fixture.commit(worktree / "tmp" / "helper", "local.txt")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "nested repository tmp/helper has commits that are on no remote")
+
+    def test_ignored_clean_nested_clone_does_not_block(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, "tmp/")
+        self.fixture.git(worktree, "clone", str(self.fixture.origin), "tmp/dep")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(worktree.exists())
+
+    def test_ignored_nested_worktree_with_uncommitted_change_is_refused(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, ".worktrees/")
+        nested = worktree / ".worktrees" / "other"
+        self.fixture.git(self.fixture.main_checkout, "worktree", "add", "-b", "other", str(nested))
+        self.fixture.worktrees.append(nested)
+        (nested / "notes.txt").write_text("draft\n", encoding="utf-8")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "has uncommitted changes")
+
+    def test_sensitive_looking_names_in_package_directories_do_not_block(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        viem = worktree / "node_modules" / "viem"
+        viem.mkdir(parents=True)
+        (viem / "createWebAuthnCredential.js").write_text("module.exports = 1;\n", encoding="utf-8")
+        package = worktree / "node_modules" / "pkg"
+        package.mkdir()
+        (package / "server.pem").write_text("public\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(worktree.exists())
+
+    def test_ignored_env_file_with_uppercase_name_is_refused(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, ".ENV")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        (worktree / ".ENV").write_text("TOKEN=x\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, ".ENV")
+
+    def test_files_at_deinitialized_submodule_path_are_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.git(worktree, "submodule", "deinit", "-f", "sub")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        (worktree / "sub" / "notes.txt").write_text("draft\n", encoding="utf-8")
+        status = self.fixture.git(worktree, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+        self.assertEqual(status, "")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule path sub is not initialized but contains files")
 
 
 if __name__ == "__main__":

@@ -23,6 +23,10 @@ BRANCH_REF_PREFIX = "refs/heads/"
 SENSITIVE_NAME_PATTERNS = (".env*", "*.pem", "*.key", "*.p12", "id_rsa*")
 SENSITIVE_NAME_WORDS = ("credential", "secret")
 ENV_TEMPLATE_NAMES = frozenset({".env.example", ".env.sample", ".env.template"})
+# Package-manager output is regenerable, and its file names often look sensitive.
+PACKAGE_DIRECTORY_NAMES = ("node_modules", "site-packages")
+GITLINK_MODE = "160000"
+MAX_LISTED_PATHS = 10
 
 
 class Refused(Exception):
@@ -164,55 +168,107 @@ def submodule_git_dirs(worktree: Path) -> dict[Path, str]:
     return git_dirs
 
 
+def check_git_dir_pushed(git_dir: Path, label: str, cwd: Path) -> None:
+    """Refuse if the git directory has a stash or commits that are on no remote."""
+    # Removal deletes the git directory. `--all` minus tags covers every local branch, the stash,
+    # and the HEAD of every worktree of that git directory. Tags are excluded because fetched
+    # release tags often point at commits that no remote branch contains. A local-only tag is an
+    # accepted gap.
+    git_dir_option = f"--git-dir={git_dir}"
+    stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], cwd)
+    if stash.returncode == 0:
+        raise Refused(f"{label} has a stash")
+    unpushed = run(["git", git_dir_option, "rev-list", "--exclude=refs/tags/*", "--all", "--not", "--remotes"], cwd)
+    if unpushed.strip():
+        raise Refused(f"{label} has commits that are on no remote")
+
+
+def gitlink_paths(worktree: Path) -> list[str]:
+    records = git(worktree, "ls-files", "--stage", "-z").split("\0")
+    return [record.split("\t", 1)[1] for record in records if record.startswith(f"{GITLINK_MODE} ")]
+
+
+def check_uninitialized_submodule_paths(worktree: Path) -> None:
+    # Status and `submodule foreach` ignore a submodule path without a checkout, yet removal deletes its files.
+    for path in gitlink_paths(worktree):
+        directory = worktree / path
+        if directory.is_dir() and not (directory / ".git").exists() and any(directory.iterdir()):
+            raise Refused(f"submodule path {path} is not initialized but contains files")
+
+
 def check_submodules(worktree: Path) -> None:
-    # Removing the worktree with force deletes these git directories, including those of
-    # deinitialized submodules. `--all` minus tags covers every local branch, the stash, and
-    # the HEAD of every worktree of that git directory, so none may hold unpushed commits.
-    # Tags are excluded because fetched release tags often point at commits that no remote
-    # branch contains. A local-only tag is an accepted gap.
+    check_uninitialized_submodule_paths(worktree)
+    # Removal also deletes the git directories of deinitialized submodules.
     for git_dir, name in submodule_git_dirs(worktree).items():
-        git_dir_option = f"--git-dir={git_dir}"
-        stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], worktree)
-        if stash.returncode == 0:
-            raise Refused(f"submodule {name} has a stash")
-        unpushed = run(
-            ["git", git_dir_option, "rev-list", "--exclude=refs/tags/*", "--all", "--not", "--remotes"],
-            worktree,
-        )
-        if unpushed.strip():
-            raise Refused(f"submodule {name} has commits that are on no remote")
+        check_git_dir_pushed(git_dir, f"submodule {name}", worktree)
+
+
+def is_package_path(path: str) -> bool:
+    return any(part in PACKAGE_DIRECTORY_NAMES for part in PurePosixPath(path).parts)
 
 
 def is_sensitive(path: str) -> bool:
-    name = PurePosixPath(path).name
+    if is_package_path(path):
+        return False
+    name = PurePosixPath(path).name.lower()
     if name in ENV_TEMPLATE_NAMES:
         return False
-    lowered = name.lower()
-    if any(word in lowered for word in SENSITIVE_NAME_WORDS):
+    if any(word in name for word in SENSITIVE_NAME_WORDS):
         return True
-    return any(fnmatch.fnmatch(name, pattern) for pattern in SENSITIVE_NAME_PATTERNS)
+    return any(fnmatch.fnmatchcase(name, pattern) for pattern in SENSITIVE_NAME_PATTERNS)
 
 
 def list_ignored(directory: Path) -> list[str]:
     # No --directory: a sensitive file inside an ignored directory must still be listed.
+    # A nested repository is the exception: git lists it as one entry that ends in "/".
     output = git(directory, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
     return [path for path in output.split("\0") if path]
 
 
+def check_nested_repository(directory: Path, display_path: str) -> None:
+    """Refuse if removal would lose work in a repository that sits inside an ignored directory."""
+    result = run_unchecked(["git", "-C", str(directory), "rev-parse", "--absolute-git-dir"], directory)
+    if result.returncode != 0:
+        raise Refused(f"cannot inspect ignored directory {display_path}")
+    check_clean(directory)
+    check_git_dir_pushed(Path(result.stdout.strip()), f"nested repository {display_path}", directory)
+
+
+def collect_ignored(directory: Path, prefix: str) -> list[str]:
+    """List ignored paths under `directory` with `prefix`. Inspect nested repositories, recursively.
+
+    A nested repository stays in the result as one entry that ends in "/", followed by its own ignored files.
+    """
+    paths: list[str] = []
+    for entry in list_ignored(directory):
+        paths.append(prefix + entry)
+        if entry.endswith("/"):
+            check_nested_repository(directory / entry, prefix + entry.rstrip("/"))
+            paths.extend(collect_ignored(directory / entry, prefix + entry))
+    return paths
+
+
+def top_level_path(path: str) -> str:
+    parts = PurePosixPath(path).parts
+    return parts[0] + "/" if len(parts) > 1 or path.endswith("/") else parts[0]
+
+
+def format_paths(paths: list[str]) -> str:
+    shown = ", ".join(paths[:MAX_LISTED_PATHS])
+    hidden = len(paths) - MAX_LISTED_PATHS
+    return f"{shown} and {hidden} more" if hidden > 0 else shown
+
+
 def check_ignored(worktree: Path) -> tuple[str, ...]:
     """Refuse on sensitive ignored files. Return regenerable ignored paths, collapsed to top level."""
+    paths = collect_ignored(worktree, "")
     # `ls-files` does not descend into submodules, but removal deletes their files too.
-    files = list_ignored(worktree)
     for name in checked_out_git_dirs(worktree).values():
-        files.extend(f"{name}/{path}" for path in list_ignored(worktree / name))
-    sensitive = sorted(path for path in files if is_sensitive(path))
+        paths.extend(collect_ignored(worktree / name, f"{name}/"))
+    sensitive = sorted(path for path in paths if not path.endswith("/") and is_sensitive(path))
     if sensitive:
-        raise Refused(f"worktree {worktree} has ignored files that may hold secrets: {', '.join(sensitive)}")
-    top_level = set()
-    for path in files:
-        parts = PurePosixPath(path).parts
-        top_level.add(parts[0] + "/" if len(parts) > 1 else parts[0])
-    return tuple(sorted(top_level))
+        raise Refused(f"worktree {worktree} has ignored files that may hold secrets: {format_paths(sensitive)}")
+    return tuple(sorted({top_level_path(path) for path in paths}))
 
 
 def ensure_commit(main_worktree: Path, oid: str, pr_number: int) -> str | None:
