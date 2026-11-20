@@ -111,6 +111,24 @@ def default_branch(main_worktree: Path) -> str:
     return gh_json(main_worktree, "repo", "view", "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
 
 
+def check_clean(worktree: Path) -> None:
+    status = git(worktree, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+    if status.strip():
+        raise Refused(f"worktree {worktree} has uncommitted changes:\n{status.rstrip()}")
+
+
+def check_submodules(worktree: Path) -> None:
+    # `git worktree remove --force` deletes submodule git directories, so a
+    # submodule commit that is on no remote would be lost.
+    listing = git(worktree, "submodule", "foreach", "--quiet", "--recursive", 'echo "$displaypath"')
+    for relative in listing.splitlines():
+        submodule = worktree / relative
+        check_clean(submodule)
+        unpushed = git(submodule, "rev-list", "HEAD", "--not", "--remotes")
+        if unpushed.strip():
+            raise Refused(f"submodule {relative} has commits that are on no remote")
+
+
 def ensure_commit(main_worktree: Path, oid: str, pr_number: int) -> str | None:
     """Return None if the commit is available locally, otherwise the reason it is not."""
     commit_ref = f"{oid}^{{commit}}"
@@ -173,8 +191,12 @@ def build_plan(repo: Path, branch_arg: str | None) -> Plan:
     if len(checkouts) > 1:
         paths = ", ".join(str(worktree.path) for worktree in checkouts)
         raise Refused(f"branch {branch} is checked out in {len(checkouts)} worktrees: {paths}")
+    branch_worktree = checkouts[0] if checkouts else None
+    if branch_worktree is not None:
+        check_clean(branch_worktree.path)
+        check_submodules(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
-    return Plan(branch, tip, default, main_worktree, checkouts[0] if checkouts else None)
+    return Plan(branch, tip, default, main_worktree, branch_worktree)
 
 
 def execute(plan: Plan) -> str | None:
