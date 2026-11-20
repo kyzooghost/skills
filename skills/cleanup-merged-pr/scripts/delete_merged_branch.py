@@ -171,14 +171,14 @@ def submodule_git_dirs(worktree: Path) -> dict[Path, str]:
 def check_git_dir_pushed(git_dir: Path, label: str, cwd: Path) -> None:
     """Refuse if the git directory has a stash or commits that are on no remote."""
     # Removal deletes the git directory. `--all` minus tags covers every local branch, the stash,
-    # and the HEAD of every worktree of that git directory. Tags are excluded because fetched
-    # release tags often point at commits that no remote branch contains. A local-only tag is an
-    # accepted gap.
+    # and the HEAD of every worktree of that git directory. Tags count as safe, both as tips and as
+    # places a commit can be reached from, because fetched release tags often point at commits that
+    # no remote branch contains. A local-only tag is an accepted gap.
     git_dir_option = f"--git-dir={git_dir}"
     stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], cwd)
     if stash.returncode == 0:
         raise Refused(f"{label} has a stash")
-    unpushed = run(["git", git_dir_option, "rev-list", "--exclude=refs/tags/*", "--all", "--not", "--remotes"], cwd)
+    unpushed = run(["git", git_dir_option, "rev-list", "--exclude=refs/tags/*", "--all", "--not", "--remotes", "--tags"], cwd)
     if unpushed.strip():
         raise Refused(f"{label} has commits that are on no remote")
 
@@ -188,19 +188,19 @@ def gitlink_paths(worktree: Path) -> list[str]:
     return [record.split("\t", 1)[1] for record in records if record.startswith(f"{GITLINK_MODE} ")]
 
 
-def check_uninitialized_submodule_paths(worktree: Path) -> None:
+def check_uninitialized_submodule_paths(directory: Path, prefix: str) -> None:
     # Status and `submodule foreach` ignore a submodule path without a checkout, yet removal deletes its files.
-    for path in gitlink_paths(worktree):
-        directory = worktree / path
-        if directory.is_dir() and not (directory / ".git").exists() and any(directory.iterdir()):
-            raise Refused(f"submodule path {path} is not initialized but contains files")
+    for path in gitlink_paths(directory):
+        submodule = directory / path
+        if submodule.is_dir() and not (submodule / ".git").exists() and any(submodule.iterdir()):
+            raise Refused(f"submodule path {prefix}{path} is not initialized but contains files")
 
 
-def check_submodules(worktree: Path) -> None:
-    check_uninitialized_submodule_paths(worktree)
+def check_submodules(directory: Path, prefix: str) -> None:
+    check_uninitialized_submodule_paths(directory, prefix)
     # Removal also deletes the git directories of deinitialized submodules.
-    for git_dir, name in submodule_git_dirs(worktree).items():
-        check_git_dir_pushed(git_dir, f"submodule {name}", worktree)
+    for git_dir, name in submodule_git_dirs(directory).items():
+        check_git_dir_pushed(git_dir, f"submodule {prefix}{name}", directory)
 
 
 def is_package_path(path: str) -> bool:
@@ -225,26 +225,44 @@ def list_ignored(directory: Path) -> list[str]:
     return [path for path in output.split("\0") if path]
 
 
-def check_nested_repository(directory: Path, display_path: str) -> None:
+def git_common_dir(directory: Path) -> Path:
+    return Path(git(directory, "rev-parse", "--path-format=absolute", "--git-common-dir").strip()).resolve()
+
+
+def check_nested_repository(directory: Path, display_path: str, superproject_common_dir: Path) -> None:
     """Refuse if removal would lose work in a repository that sits inside an ignored directory."""
-    result = run_unchecked(["git", "-C", str(directory), "rev-parse", "--absolute-git-dir"], directory)
-    if result.returncode != 0:
+    probe = run_unchecked(["git", "-C", str(directory), "rev-parse", "--absolute-git-dir"], directory)
+    if probe.returncode != 0:
         raise Refused(f"cannot inspect ignored directory {display_path}")
+    # Deleting a worktree of this repository leaves its metadata prunable and its branch checked out.
+    # `rev-list --all` over the shared refs would also report a misleading "commits on no remote".
+    if git_common_dir(directory) == superproject_common_dir:
+        raise Refused(
+            f"nested worktree {display_path} belongs to this repository; remove it first with git worktree remove"
+        )
     check_clean(directory)
-    check_git_dir_pushed(Path(result.stdout.strip()), f"nested repository {display_path}", directory)
+    check_git_dir_pushed(Path(probe.stdout.strip()), f"nested repository {display_path}", directory)
 
 
-def collect_ignored(directory: Path, prefix: str) -> list[str]:
-    """List ignored paths under `directory` with `prefix`. Inspect nested repositories, recursively.
-
-    A nested repository stays in the result as one entry that ends in "/", followed by its own ignored files.
-    """
+def inspect_ignored(directory: Path, prefix: str, superproject_common_dir: Path) -> list[str]:
+    """List ignored paths under `directory`. A nested repository is one entry that ends in "/"."""
     paths: list[str] = []
     for entry in list_ignored(directory):
         paths.append(prefix + entry)
         if entry.endswith("/"):
-            check_nested_repository(directory / entry, prefix + entry.rstrip("/"))
-            paths.extend(collect_ignored(directory / entry, prefix + entry))
+            nested = directory / entry
+            check_nested_repository(nested, prefix + entry.rstrip("/"), superproject_common_dir)
+            paths.extend(inspect_tree(nested, prefix + entry, superproject_common_dir))
+    return paths
+
+
+def inspect_tree(directory: Path, prefix: str, superproject_common_dir: Path) -> list[str]:
+    """Check submodules and nested repositories under `directory`. Return its ignored paths, prefixed."""
+    check_submodules(directory, prefix)
+    paths = inspect_ignored(directory, prefix, superproject_common_dir)
+    # `ls-files` does not descend into submodules, but removal deletes their files too.
+    for name in checked_out_git_dirs(directory).values():
+        paths.extend(inspect_ignored(directory / name, f"{prefix}{name}/", superproject_common_dir))
     return paths
 
 
@@ -260,11 +278,11 @@ def format_paths(paths: list[str]) -> str:
 
 
 def check_ignored(worktree: Path) -> tuple[str, ...]:
-    """Refuse on sensitive ignored files. Return regenerable ignored paths, collapsed to top level."""
-    paths = collect_ignored(worktree, "")
-    # `ls-files` does not descend into submodules, but removal deletes their files too.
-    for name in checked_out_git_dirs(worktree).values():
-        paths.extend(collect_ignored(worktree / name, f"{name}/"))
+    """Inspect submodules and nested repositories, and refuse on sensitive ignored files.
+
+    Return the ignored paths that removal deletes, collapsed to top level.
+    """
+    paths = inspect_tree(worktree, "", git_common_dir(worktree))
     sensitive = sorted(path for path in paths if not path.endswith("/") and is_sensitive(path))
     if sensitive:
         raise Refused(f"worktree {worktree} has ignored files that may hold secrets: {format_paths(sensitive)}")
@@ -339,7 +357,6 @@ def build_plan(repo: Path, branch_arg: str | None) -> Plan:
         check_clean(branch_worktree.path)
         # `git switch` in the main checkout keeps its submodule git directories and ignored files.
         if branch_worktree.path != main_worktree:
-            check_submodules(branch_worktree.path)
             ignored_paths = check_ignored(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
     return Plan(branch, tip, default, main_worktree, branch_worktree, ignored_paths)

@@ -92,12 +92,16 @@ class Fixture:
         self.worktrees.append(path)
         return path
 
-    def add_submodule(self) -> None:
+    def create_submodule_origin(self) -> Path:
         source = self.root / "sub-src"
         self.git(self.root, "init", str(source))
         self.commit(source, "lib.txt")
         sub_origin = self.root / "sub.git"
         self.git(self.root, "clone", "--bare", str(source), str(sub_origin))
+        return sub_origin
+
+    def add_submodule(self) -> None:
+        sub_origin = self.create_submodule_origin()
         self.git(self.main_checkout, "submodule", "add", str(sub_origin), "sub")
         self.git(self.main_checkout, "commit", "-m", "add submodule")
         self.git(self.main_checkout, "push", "origin", DEFAULT_BRANCH)
@@ -469,18 +473,57 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(worktree.exists())
 
-    def test_ignored_nested_worktree_with_uncommitted_change_is_refused(self) -> None:
+    def test_ignored_nested_worktree_of_same_repository_is_refused(self) -> None:
         worktree = self.fixture.add_worktree()
         self.fixture.ignore_locally(worktree, ".worktrees/")
         nested = worktree / ".worktrees" / "other"
         self.fixture.git(self.fixture.main_checkout, "worktree", "add", "-b", "other", str(nested))
         self.fixture.worktrees.append(nested)
-        (nested / "notes.txt").write_text("draft\n", encoding="utf-8")
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
 
         result = self.fixture.run_script("--repo", str(worktree))
 
-        self.assert_refused(result, "has uncommitted changes")
+        self.assert_refused(result, "nested worktree .worktrees/other belongs to this repository")
+
+    def test_ignored_nested_repository_submodule_with_unpushed_branch_is_refused(self) -> None:
+        # The nested repository is clean and pushed, and its submodule is detached at the pinned
+        # commit, so status is clean everywhere. Only the unpushed `wip` branch in the submodule
+        # can make the script refuse.
+        sub_origin = self.fixture.create_submodule_origin()
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, "tmp/")
+        helper = worktree / "tmp" / "helper"
+        self.fixture.git(worktree, "clone", str(self.fixture.origin), "tmp/helper")
+        self.fixture.git(helper, "submodule", "add", str(sub_origin), "inner")
+        self.fixture.git(helper, "commit", "-m", "add inner")
+        self.fixture.git(helper, "push", "origin", "HEAD:refs/heads/helper-base")
+        pinned = self.fixture.git(helper / "inner", "rev-parse", "HEAD")
+        self.fixture.git(helper / "inner", "switch", "-c", "wip")
+        self.fixture.commit(helper / "inner", "wip.txt")
+        self.fixture.git(helper / "inner", "switch", "--detach", pinned)
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule tmp/helper/inner has commits that are on no remote")
+
+    def test_ignored_nested_clone_at_fetched_off_branch_tag_does_not_block(self) -> None:
+        main_checkout = self.fixture.main_checkout
+        self.fixture.git(main_checkout, "switch", "--detach")
+        self.fixture.commit(main_checkout, "release.txt")
+        self.fixture.git(main_checkout, "tag", "v1.0.0")
+        self.fixture.git(main_checkout, "push", "origin", "v1.0.0")
+        self.fixture.git(main_checkout, "switch", DEFAULT_BRANCH)
+        worktree = self.fixture.add_worktree()
+        self.fixture.ignore_locally(worktree, "lib/")
+        self.fixture.git(worktree, "clone", str(self.fixture.origin), "lib/dep")
+        self.fixture.git(worktree / "lib" / "dep", "checkout", "v1.0.0")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(worktree.exists())
 
     def test_sensitive_looking_names_in_package_directories_do_not_block(self) -> None:
         worktree = self.fixture.add_worktree()
