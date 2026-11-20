@@ -55,7 +55,7 @@ The script runs every check before it changes anything. On the first failed chec
 
 1. The branch exists locally and is not the default branch.
 2. If the branch is checked out in a worktree, `git status --porcelain --untracked-files=all` in that worktree is empty.
-3. Every submodule in that worktree, recursively, has no uncommitted changes and no commits missing from its remotes (`git rev-list HEAD --not --remotes` is empty).
+3. Every submodule git directory the worktree owns is safe. These are found by walking `git rev-parse --git-path modules`, so nested and deinitialized submodules are included. In each one, `git rev-list HEAD --branches --not --remotes` is empty and `refs/stash` does not exist. Dirty submodule content is already caught by check 2, because `git status --ignore-submodules=none` reports it.
 4. If the branch is in a linked worktree, no gitignored file in it matches a sensitive pattern. This check is skipped for the main checkout, because `git switch` keeps ignored files. Sensitive patterns:
    - `.env*`, except `.env.example`, `.env.sample`, and `.env.template`
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
@@ -68,7 +68,7 @@ The script runs every check before it changes anything. On the first failed chec
 
 The tip comparison in check 5 prevents loss of commits made after the merge. A squash merge leaves branch commits off `main`, so the merged-PR state alone does not prove the local tip is on GitHub.
 
-Check 3 is needed because `git worktree remove --force` deletes the worktree's submodule git directories, including commits that exist on no remote.
+Check 3 is needed because a linked worktree keeps its submodule git directories under `.git/worktrees/<wt>/modules/`, and `git worktree remove --force` deletes them. That includes branches, stashes, and deinitialized submodules, not only the checked-out `HEAD`.
 
 ### Actions
 
@@ -187,4 +187,5 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 ### Residual risks
 
 - `stateReason` `REOPENED` is a valid `IssueStateReason` value (verified with GraphQL introspection on 2026-11-21).
+- Check 3 trusts every remote-tracking ref in a submodule. A stale ref, left after a force-push or a remote branch deletion, can mark a commit as safe when no remote holds it. The skill fetches only the superproject. Accepted as a known limit.
 - Listing every ignored file can be slow in a worktree with a very large `node_modules/`. A prototype test suite ran in 15 seconds; measure on a real repo if it becomes a problem.
