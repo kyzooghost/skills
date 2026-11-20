@@ -55,7 +55,11 @@ The script runs every check before it changes anything. On the first failed chec
 
 1. The branch exists locally and is not the default branch.
 2. If the branch is checked out in a worktree, `git status --porcelain --untracked-files=all` in that worktree is empty.
-3. Every submodule git directory the worktree owns is safe. These are found by walking `git rev-parse --git-path modules`, so nested and deinitialized submodules are included. In each one, `git rev-list HEAD --branches --not --remotes` is empty and `refs/stash` does not exist. Dirty submodule content is already caught by check 2, because `git status --ignore-submodules=none` reports it.
+3. If the branch is in a linked worktree, every submodule git directory it owns is safe. This check is skipped for the main checkout, because `git switch` keeps submodule git directories. Git directories come from two sources:
+   - a walk of `git rev-parse --git-path modules`, which includes nested and deinitialized submodules
+   - `git rev-parse --absolute-git-dir` in each checked-out submodule, recursively, which includes embedded `.git` directories
+
+   In each git directory, `refs/stash` must not exist and `git rev-list --all --not --remotes` must be empty. `--all` covers branches, tags, the stash, and the HEAD of every worktree of that submodule. Dirty submodule content is already caught by check 2, because `git status --ignore-submodules=none` reports it.
 4. If the branch is in a linked worktree, no gitignored file in it matches a sensitive pattern. This check is skipped for the main checkout, because `git switch` keeps ignored files. Sensitive patterns:
    - `.env*`, except `.env.example`, `.env.sample`, and `.env.template`
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
