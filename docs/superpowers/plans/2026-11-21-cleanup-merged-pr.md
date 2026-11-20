@@ -444,6 +444,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+> **Task 1 review outcome (commit `93e275c`):** the code review added fetch-error reporting, a refusal when the branch is checked out in more than one worktree, `OSError` and invalid-JSON handling, `worktree list -z`, a tip re-check before deletion, and 4 tests. `Plan` now has a `tip` field after `branch`, and `build_plan` collects `checkouts`. Tasks 2 and 3 below are written against that code.
+
 ### Task 2: Uncommitted changes and submodule checks
 
 Covers spec checks 2 and 3.
@@ -520,7 +522,7 @@ The last test commits the new submodule pointer, so the superproject status is c
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: the 4 new tests FAIL with `AssertionError: 0 != 1`, because the script deletes the branch. The 6 Task 1 tests PASS.
+Expected: the 4 new tests FAIL with `AssertionError: 0 != 1`, because the script deletes the branch. The 10 Task 1 tests PASS.
 
 - [ ] **Step 3: Add the checks**
 
@@ -548,24 +550,25 @@ def check_submodules(worktree: Path) -> None:
 In `build_plan`, replace:
 
 ```python
-    branch_worktree = next((worktree for worktree in worktrees if worktree.branch == branch), None)
     check_merged(main_worktree, branch, default, tip)
+    return Plan(branch, tip, default, main_worktree, checkouts[0] if checkouts else None)
 ```
 
 with:
 
 ```python
-    branch_worktree = next((worktree for worktree in worktrees if worktree.branch == branch), None)
+    branch_worktree = checkouts[0] if checkouts else None
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
         check_submodules(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
+    return Plan(branch, tip, default, main_worktree, branch_worktree)
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: 10 tests PASS.
+Expected: 14 tests PASS.
 
 - [ ] **Step 5: Commit**
 
@@ -634,7 +637,7 @@ Replace `test_branch_in_main_checkout_switches_to_default_then_deletes` with thi
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: `test_ignored_env_file_is_refused` FAILS with `AssertionError: 0 != 1`. `test_ignored_regenerable_directory_is_deleted_and_listed` FAILS because `deleted ignored paths` is not in stdout. The other 10 tests PASS.
+Expected: `test_ignored_env_file_is_refused` FAILS with `AssertionError: 0 != 1`. `test_ignored_regenerable_directory_is_deleted_and_listed` FAILS because `deleted ignored paths` is not in stdout. The other 14 tests PASS.
 
 - [ ] **Step 3: Add the check**
 
@@ -676,6 +679,7 @@ Add `ignored_paths` as the last field of `Plan`:
 @dataclass(frozen=True)
 class Plan:
     branch: str
+    tip: str
     default_branch: str
     main_worktree: Path
     branch_worktree: Worktree | None
@@ -717,7 +721,7 @@ In `build_plan`, replace:
         check_clean(branch_worktree.path)
         check_submodules(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
-    return Plan(branch, default, main_worktree, branch_worktree)
+    return Plan(branch, tip, default, main_worktree, branch_worktree)
 ```
 
 with:
@@ -731,7 +735,7 @@ with:
         if branch_worktree.path != main_worktree:
             ignored_paths = check_ignored(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
-    return Plan(branch, default, main_worktree, branch_worktree, ignored_paths)
+    return Plan(branch, tip, default, main_worktree, branch_worktree, ignored_paths)
 ```
 
 In `main`, replace:
@@ -752,7 +756,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: 12 tests PASS.
+Expected: 16 tests PASS.
 
 - [ ] **Step 5: Run the full test suite**
 
