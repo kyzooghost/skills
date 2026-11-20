@@ -65,7 +65,7 @@ The script runs every check before it changes anything. On the first failed chec
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
    - file names that contain `credential` or `secret`
 
-   The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
+   The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. It runs the same listing in each checked-out submodule, because `ls-files` does not descend into submodules and removal deletes their files too. Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
 5. One of these conditions is true:
    - `gh pr list --head <branch> --state merged --json number,headRefOid` returns a PR, and the local branch tip equals its `headRefOid` or is an ancestor of it.
    - `git rev-list --count origin/<default>..<branch>` is `0`.
