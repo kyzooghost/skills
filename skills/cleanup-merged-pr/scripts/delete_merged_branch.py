@@ -126,37 +126,50 @@ def check_clean(worktree: Path) -> None:
         raise Refused(f"worktree {worktree} has uncommitted changes:\n{status.rstrip()}")
 
 
-def modules_root(worktree: Path) -> Path:
-    return Path(git(worktree, "rev-parse", "--path-format=absolute", "--git-path", "modules").strip())
-
-
-def module_git_dirs(worktree: Path) -> list[Path]:
-    """Return every submodule git directory of a worktree, including nested and deinitialized ones."""
-    root = modules_root(worktree)
+def modules_git_dirs(worktree: Path) -> dict[Path, str]:
+    """Map git directories under the worktree's modules directory, nested and deinitialized ones included, to names."""
+    root = Path(git(worktree, "rev-parse", "--path-format=absolute", "--git-path", "modules").strip())
     if not root.is_dir():
-        return []
-    git_dirs: list[Path] = []
+        return {}
+    git_dirs: dict[Path, str] = {}
     for directory, subdirectories, files in os.walk(root):
         if "HEAD" in files and "objects" in subdirectories:
-            git_dirs.append(Path(directory))
+            name = Path(directory).relative_to(root).as_posix().replace("/modules/", "/")
+            git_dirs[Path(directory).resolve()] = name
             # Nested submodules live in <git dir>/modules. Skip the rest of the git dir.
-            subdirectories[:] = [name for name in subdirectories if name == "modules"]
+            subdirectories[:] = [child for child in subdirectories if child == "modules"]
+    return git_dirs
+
+
+def checked_out_git_dirs(worktree: Path) -> dict[Path, str]:
+    """Map git directories of checked-out submodules to names. Includes embedded `.git` directories."""
+    listing = git(
+        worktree, "submodule", "foreach", "--quiet", "--recursive",
+        'printf "%s\\0%s\\0" "$displaypath" "$(git rev-parse --absolute-git-dir)"',
+    )
+    fields = listing.split("\0")
+    return {Path(git_dir).resolve(): name for name, git_dir in zip(fields[0::2], fields[1::2])}
+
+
+def submodule_git_dirs(worktree: Path) -> dict[Path, str]:
+    git_dirs = checked_out_git_dirs(worktree)
+    for git_dir, name in modules_git_dirs(worktree).items():
+        git_dirs.setdefault(git_dir, name)
     return git_dirs
 
 
 def check_submodules(worktree: Path) -> None:
     # Removing the worktree with force deletes these git directories, including those of
-    # deinitialized submodules, so any local branch commit or stash in them would be lost.
-    root = modules_root(worktree)
-    for git_dir in module_git_dirs(worktree):
-        name = git_dir.relative_to(root).as_posix()
+    # deinitialized submodules. `rev-list --all` covers every local branch, tag, stash and
+    # HEAD (of all worktrees of that git directory), so none of them may hold unpushed commits.
+    for git_dir, name in submodule_git_dirs(worktree).items():
         git_dir_option = f"--git-dir={git_dir}"
-        unpushed = run(["git", git_dir_option, "rev-list", "HEAD", "--branches", "--not", "--remotes"], worktree)
-        if unpushed.strip():
-            raise Refused(f"submodule {name} has commits that are on no remote")
         stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], worktree)
         if stash.returncode == 0:
             raise Refused(f"submodule {name} has a stash")
+        unpushed = run(["git", git_dir_option, "rev-list", "--all", "--not", "--remotes"], worktree)
+        if unpushed.strip():
+            raise Refused(f"submodule {name} has commits that are on no remote")
 
 
 def ensure_commit(main_worktree: Path, oid: str, pr_number: int) -> str | None:
@@ -224,7 +237,9 @@ def build_plan(repo: Path, branch_arg: str | None) -> Plan:
     branch_worktree = checkouts[0] if checkouts else None
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
-        check_submodules(branch_worktree.path)
+        # `git switch` in the main checkout keeps its submodule git directories.
+        if branch_worktree.path != main_worktree:
+            check_submodules(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
     return Plan(branch, tip, default, main_worktree, branch_worktree)
 

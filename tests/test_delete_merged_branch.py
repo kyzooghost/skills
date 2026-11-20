@@ -340,5 +340,61 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
 
 
+    def test_embedded_submodule_git_dir_with_unpushed_commit_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        sub_origin = self.fixture.root / "sub.git"
+        self.fixture.git(worktree, "clone", str(sub_origin), "libx")
+        self.fixture.commit(worktree / "libx", "local-only.txt")
+        self.fixture.git(worktree, "submodule", "add", str(sub_origin), "libx")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule libx has commits that are on no remote")
+
+    def test_submodule_worktree_commit_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        sub_worktree = self.fixture.root / "subwt"
+        self.fixture.git(worktree / "sub", "worktree", "add", "--detach", str(sub_worktree))
+        self.fixture.commit(sub_worktree, "local-only.txt")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule sub has commits that are on no remote")
+
+    def test_submodule_local_tag_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        self.fixture.git(worktree / "sub", "switch", "--detach")
+        self.fixture.commit(worktree / "sub", "local-only.txt")
+        self.fixture.git(worktree / "sub", "tag", "local-only")
+        self.fixture.git(worktree, "submodule", "update")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule sub has commits that are on no remote")
+
+    def test_main_checkout_submodule_branch_does_not_block(self) -> None:
+        main_checkout = self.fixture.main_checkout
+        self.fixture.add_submodule()
+        self.fixture.git(main_checkout, "submodule", "update", "--init")
+        self.fixture.git(main_checkout / "sub", "switch", "-c", "keep")
+        self.fixture.commit(main_checkout / "sub", "local-only.txt")
+        self.fixture.git(main_checkout, "submodule", "update")
+        self.fixture.git(main_checkout, "switch", "-c", FEATURE_BRANCH)
+        self.fixture.set_merged_prs(self.fixture.commit(main_checkout, "feature.txt"))
+
+        result = self.fixture.run_script("--repo", str(main_checkout))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
+
+
 if __name__ == "__main__":
     unittest.main()
