@@ -35,12 +35,11 @@ Safety Net blocks direct git deletion commands. A guarded script, `skills/cleanu
 ### Interface
 
 ```text
-delete_merged_branch.py [--branch NAME] [--repo PATH] [--dry-run]
+delete_merged_branch.py [--branch NAME] [--repo PATH]
 ```
 
 - `--branch` defaults to the current branch at `--repo`.
 - `--repo` defaults to the current directory.
-- `--dry-run` runs every check and prints the planned commands. It changes nothing.
 
 The script takes a branch name only. `SKILL.md` resolves a PR number to its head branch before it calls the script.
 
@@ -62,7 +61,7 @@ The script runs every check before it changes anything. On the first failed chec
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
    - file names that contain `credential` or `secret`
 
-   Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
+   The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. Other ignored paths, such as `node_modules/` or `dist/`, are regenerable. The script lists them in its output and does not block on them.
 5. One of these conditions is true:
    - `gh pr list --head <branch> --state merged --json number,headRefOid` returns a PR, and the local branch tip equals its `headRefOid` or is an ancestor of it.
    - `git rev-list --count origin/<default>..<branch>` is `0`.
@@ -96,7 +95,7 @@ Usage errors exit `2`.
 
 ## Skill workflow
 
-1. **Resolve the target.** Use the current branch, or the PR number or branch the user gives. Read the PR with `gh pr view --json number,url,state,headRefName,baseRefName,body,closingIssuesReferences`. If the PR is open, or closed without merge, stop and report.
+1. **Resolve the target.** Use the current branch, or the PR number or branch the user gives. Read the PR with `gh pr view --json number,url,state,headRefName,baseRefName,body,closingIssuesReferences`. If the PR is open, or closed without merge, stop and report. If the branch has no PR, skip step 5. The script's "no commits ahead" check then decides whether the branch can be deleted.
 2. **Leave the worktree.** If cwd is inside the branch's worktree, `cd` to the main worktree first.
 3. **Sync the default branch.** Resolve `<default>` with `gh repo view --json defaultBranchRef`, usually `main`. Run `git fetch --prune origin`. Then fast-forward local `<default>`:
    - If `<default>` is checked out, run `git -C <checkout> merge --ff-only origin/<default>`.
@@ -104,22 +103,24 @@ Usage errors exit `2`.
 
    This step runs before deletion so the script's "no commits ahead" check uses fresh refs. If the fast-forward fails, record the reason and continue.
 4. **Delete.** Run `delete_merged_branch.py` outside the sandbox, because the sandbox keeps `.git/worktrees` read-only. If the script refuses, report its reason and keep the branch.
-5. **Close issues.** Close each still-open `closingIssuesReferences` issue:
+5. **Close issues.** GitHub links and closes issues from closing keywords only when the PR targets the default branch. For any other base, it ignores the keywords and creates no links. Classify each candidate issue by the PR's base:
+
+   - **Base is `<default>`.** GitHub closes `closingIssuesReferences` issues on merge. An issue that is still open is certain only if `gh issue view <n> --json state,stateReason` does not show `REOPENED`. Close certain issues without asking. A reopened issue is uncertain, because someone chose to reopen it.
+   - **Base is not `<default>`.** Collect issues from closing-keyword lines in the PR body (`Closes #N`, `Fixes #N`, `Resolves #N`, and their variants) and from `closingIssuesReferences`, which then holds only manual links. All are uncertain. When you ask, state that the change reached `<base>` but not `<default>`.
+   - **Always uncertain:** bare `#N` mentions in the PR body or commit messages, and issue numbers in the branch name.
+
+   List all uncertain issues in one question and close only those the user confirms. Close each issue with:
 
    ```bash
    gh issue close <n> --reason completed --comment "Resolved by <PR url>"
    ```
 
-   Treat these as uncertain. List them and ask the user before closing any:
-   - bare `#N` mentions in the PR body or commit messages
-   - issue numbers in the branch name
-   - issues in another repository
 6. **Report.** State:
    - the worktree and branch result, or the script's refusal reason
-   - the `main` sync result
+   - the default-branch sync result
    - issues closed by this run
    - issues already closed by GitHub
-   - issues left open, with the reason
+   - issues left open, with the reason. For a non-default base, the reason is "merged into `<base>`, not `<default>`". GitHub will not close these from this PR, so a later PR into `<default>` must reference them again.
 
 ### Hard rules
 
@@ -146,7 +147,6 @@ Usage errors exit `2`.
 | Default branch | Refused |
 | Dirty submodule | Refused |
 | Submodule commit on no remote | Refused |
-| `--dry-run` | Plan printed, nothing changed |
 
 ### Skill
 
@@ -158,3 +158,32 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 2. Record the failures and rationalizations verbatim.
 3. Write `SKILL.md` against those failures.
 4. Rerun both scenarios with the skill. Close any new loophole and rerun.
+
+## Decision ledger
+
+### Human-owned decisions
+
+- **Uncertain issues need the user.** Close an issue without asking only when its link to the merged change is certain. Ask in every other case. Report every closed issue at the end of the run.
+- **Non-default base means ask.** For a PR merged into a branch other than the default branch, treat every candidate issue as uncertain, including `Closes #N` lines. The change has not reached the default branch, so closing can be premature.
+- **One branch per run**, defaulting to the current branch.
+- **Fast-forward only** for the default-branch sync. On failure, skip the sync, continue, and report.
+- **Script owns only deletion** (approach A). The skill owns the PR lookup, sync, issues, and report.
+- **Extra safety checks:** local tip must equal or precede the merged PR's `headRefOid`; submodules must have no unpushed commits; sensitive ignored files block deletion.
+
+### Agent-owned decisions
+
+- **Reopened issues are uncertain.** A still-open closing reference on a default-base PR with `stateReason` `REOPENED` was reopened by a person. Ask before closing it. This applies the uncertain-issue principle.
+- **No PR means no issue step.** The script's "no commits ahead" check alone decides deletion.
+- **No `--dry-run` flag.** No workflow step uses it, so it adds code and tests without value.
+- **Full ignored-file listing.** List ignored files without `--directory`, so a sensitive file inside an ignored directory is still found.
+
+### Deferred implementation decisions
+
+- Exact closing-keyword regex and the commit-message scan: `writing-plans`.
+- Fixture format for the stub `gh`: `writing-plans`.
+- Wording of the baseline pressure scenarios: skill RED phase.
+
+### Residual risks
+
+- `stateReason` `REOPENED` on open issues [NEEDS VERIFICATION]. Confirm with `gh issue view --json stateReason` during implementation. If it is not available, read the issue timeline instead.
+- Listing every ignored file can be slow in a worktree with a large `node_modules/`. Measure during implementation.
