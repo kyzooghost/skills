@@ -59,7 +59,7 @@ The script runs every check before it changes anything. On the first failed chec
    - a walk of `git rev-parse --git-path modules`, which includes nested and deinitialized submodules
    - `git rev-parse --absolute-git-dir` in each checked-out submodule, recursively, which includes embedded `.git` directories
 
-   In each git directory, `refs/stash` must not exist and `git rev-list --exclude=refs/tags/* --all --not --remotes` must be empty. This covers branches, the stash, and the HEAD of every worktree of that submodule. Tags are excluded because fetched release tags often point at commits that no remote branch contains. For example, a plain clone of `OpenZeppelin/openzeppelin-contracts` would otherwise refuse with 236 commits. Dirty submodule content is already caught by check 2, because `git status --ignore-submodules=none` reports it.
+   In each git directory, `refs/stash` must not exist and `git rev-list --exclude=refs/tags/* --all --not --remotes --tags` must be empty. This covers branches, the stash, and the HEAD of every worktree of that submodule. Tags count as safe because fetched release tags often point at commits that no remote branch contains, and a dependency is often checked out at such a tag. For example, a plain clone of `OpenZeppelin/openzeppelin-contracts` would otherwise refuse with 236 commits. Dirty submodule content is already caught by check 2, because `git status --ignore-submodules=none` reports it.
 4. If the branch is in a linked worktree, no gitignored file in it matches a sensitive pattern. This check is skipped for the main checkout, because `git switch` keeps ignored files. Sensitive patterns:
    - `.env*`, except `.env.example`, `.env.sample`, and `.env.template`
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
@@ -69,7 +69,7 @@ The script runs every check before it changes anything. On the first failed chec
 
    The script lists every ignored file with `git ls-files --others --ignored --exclude-standard`, without `--directory`, so a sensitive file inside an ignored directory is still found. It runs the same listing in each checked-out submodule, because `ls-files` does not descend into submodules and removal deletes their files too.
 
-   `ls-files` prints an ignored nested git repository, such as a Foundry `lib/forge-std/` clone or an agent's `.worktrees/<name>`, as one entry with a trailing `/`. The script inspects each one recursively, with the same rules as a submodule git directory: a clean status, no stash, and no commits that are on no remote. Its ignored files go through the same sensitive check. A clean clone of a remote does not block cleanup.
+   `ls-files` prints an ignored nested git repository, such as a Foundry `lib/forge-std/` clone or an agent's `.worktrees/<name>`, as one entry with a trailing `/`. The script inspects each one with the same rules as the worktree itself: a clean status, no stash, no commits that are on no remote, safe submodules, and no sensitive ignored files, recursively. A clean clone of a remote does not block cleanup. A nested linked worktree of the same repository is refused with a request to remove it first with `git worktree remove`, because deleting it would leave stale worktree metadata.
 
    A deinitialized submodule path that still contains files is refused, because `git status` and `submodule foreach` cannot see those files.
 
@@ -201,4 +201,5 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 - `stateReason` `REOPENED` is a valid `IssueStateReason` value (verified with GraphQL introspection on 2026-11-21).
 - Check 3 trusts every remote-tracking ref in a submodule. A stale ref, left after a force-push or a remote branch deletion, can mark a commit as safe when no remote holds it. The skill fetches only the superproject. Accepted as a known limit.
 - Check 3 ignores tags. A local-only tag on a submodule commit that no branch, stash, or worktree HEAD holds is lost on removal. Git does not create that state in normal work. Accepted by the user to avoid false refusals from fetched release tags.
+- The `credential` and `secret` name rule can match build artifacts outside package directories, such as Foundry's `out/SecretStore.sol/SecretStore.json`. Cleanup is then refused until the user deletes the build output. Accepted, because users do keep real files in such directories.
 - Listing every ignored file can be slow in a worktree with a very large `node_modules/`. A prototype test suite ran in 15 seconds; measure on a real repo if it becomes a problem.
