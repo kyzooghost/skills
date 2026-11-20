@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -50,10 +51,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--repo",
         type=Path,
-        default=Path.cwd(),
+        default=None,
         help="Any path inside the repository. Defaults to the current directory.",
     )
     return parser.parse_args(argv)
+
+
+def current_directory() -> Path:
+    try:
+        return Path.cwd()
+    except FileNotFoundError as error:
+        # Likely right after this script removed the worktree the shell was in.
+        raise CommandFailed("current directory no longer exists; pass --repo") from error
 
 
 def run_unchecked(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -117,16 +126,37 @@ def check_clean(worktree: Path) -> None:
         raise Refused(f"worktree {worktree} has uncommitted changes:\n{status.rstrip()}")
 
 
+def modules_root(worktree: Path) -> Path:
+    return Path(git(worktree, "rev-parse", "--path-format=absolute", "--git-path", "modules").strip())
+
+
+def module_git_dirs(worktree: Path) -> list[Path]:
+    """Return every submodule git directory of a worktree, including nested and deinitialized ones."""
+    root = modules_root(worktree)
+    if not root.is_dir():
+        return []
+    git_dirs: list[Path] = []
+    for directory, subdirectories, files in os.walk(root):
+        if "HEAD" in files and "objects" in subdirectories:
+            git_dirs.append(Path(directory))
+            # Nested submodules live in <git dir>/modules. Skip the rest of the git dir.
+            subdirectories[:] = [name for name in subdirectories if name == "modules"]
+    return git_dirs
+
+
 def check_submodules(worktree: Path) -> None:
-    # `git worktree remove --force` deletes submodule git directories, so a
-    # submodule commit that is on no remote would be lost.
-    listing = git(worktree, "submodule", "foreach", "--quiet", "--recursive", 'echo "$displaypath"')
-    for relative in listing.splitlines():
-        submodule = worktree / relative
-        check_clean(submodule)
-        unpushed = git(submodule, "rev-list", "HEAD", "--not", "--remotes")
+    # Removing the worktree with force deletes these git directories, including those of
+    # deinitialized submodules, so any local branch commit or stash in them would be lost.
+    root = modules_root(worktree)
+    for git_dir in module_git_dirs(worktree):
+        name = git_dir.relative_to(root).as_posix()
+        git_dir_option = f"--git-dir={git_dir}"
+        unpushed = run(["git", git_dir_option, "rev-list", "HEAD", "--branches", "--not", "--remotes"], worktree)
         if unpushed.strip():
-            raise Refused(f"submodule {relative} has commits that are on no remote")
+            raise Refused(f"submodule {name} has commits that are on no remote")
+        stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], worktree)
+        if stash.returncode == 0:
+            raise Refused(f"submodule {name} has a stash")
 
 
 def ensure_commit(main_worktree: Path, oid: str, pr_number: int) -> str | None:
@@ -218,7 +248,7 @@ def execute(plan: Plan) -> str | None:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
-        plan = build_plan(args.repo.resolve(), args.branch)
+        plan = build_plan((args.repo or current_directory()).resolve(), args.branch)
     except Refused as error:
         print(f"refused: {error}", file=sys.stderr)
         return EXIT_FAILED

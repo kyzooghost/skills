@@ -269,7 +269,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
 
         result = self.fixture.run_script("--repo", str(worktree))
 
-        self.assert_refused(result, "sub")
+        self.assert_refused(result, "has uncommitted changes")
 
     def test_submodule_commit_on_no_remote_is_refused(self) -> None:
         self.fixture.add_submodule()
@@ -283,6 +283,61 @@ class DeleteMergedBranchTest(unittest.TestCase):
         result = self.fixture.run_script("--repo", str(worktree))
 
         self.assert_refused(result, "submodule sub has commits that are on no remote")
+
+
+    def test_submodule_branch_on_no_remote_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        self.fixture.git(worktree / "sub", "switch", "-c", "wip")
+        self.fixture.commit(worktree / "sub", "wip.txt")
+        self.fixture.git(worktree, "submodule", "update")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule sub has commits that are on no remote")
+
+    def test_submodule_stash_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        (worktree / "sub" / "lib.txt").write_text("changed\n", encoding="utf-8")
+        self.fixture.git(worktree / "sub", "stash")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule sub has a stash")
+
+    def test_deinitialized_submodule_with_unpushed_commit_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.commit(worktree / "sub", "local-only.txt")
+        self.fixture.git(worktree, "add", "sub")
+        self.fixture.git(worktree, "commit", "-m", "bump submodule")
+        self.fixture.git(worktree, "submodule", "deinit", "-f", "sub")
+        self.fixture.set_merged_prs(self.fixture.git(worktree, "rev-parse", "HEAD"))
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule sub has commits that are on no remote")
+
+    def test_deleted_current_directory_with_repo_still_works(self) -> None:
+        self.fixture.add_worktree()
+        gone = self.fixture.root / "gone"
+        gone.mkdir()
+        command = [
+            "sh", "-c", 'cd "$1" && rmdir "$1" && shift && exec "$@"', "sh", str(gone),
+            sys.executable, str(SCRIPT),
+            "--repo", str(self.fixture.main_checkout), "--branch", FEATURE_BRANCH,
+        ]
+
+        result = subprocess.run(command, env=self.fixture.env, capture_output=True, text=True)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
 
 
 if __name__ == "__main__":
