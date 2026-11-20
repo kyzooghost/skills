@@ -181,12 +181,14 @@ class DeleteMergedBranchTest(unittest.TestCase):
         main_checkout = self.fixture.main_checkout
         self.fixture.git(main_checkout, "switch", "-c", FEATURE_BRANCH)
         self.fixture.set_merged_prs(self.fixture.commit(main_checkout, "feature.txt"))
+        (main_checkout / ".env").write_text("TOKEN=x\n", encoding="utf-8")
 
         result = self.fixture.run_script("--repo", str(main_checkout))
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.fixture.git(main_checkout, "branch", "--show-current"), DEFAULT_BRANCH)
         self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
+        self.assertTrue((main_checkout / ".env").exists())
 
     def test_local_tip_behind_merged_head_is_deleted(self) -> None:
         fixture = self.fixture
@@ -400,6 +402,43 @@ class DeleteMergedBranchTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
+
+    def test_ignored_env_file_is_refused(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        (worktree / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, ".env")
+
+    def test_ignored_regenerable_directory_is_deleted_and_listed(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        package = worktree / "node_modules" / "pkg"
+        package.mkdir(parents=True)
+        (package / "index.js").write_text("module.exports = 1;\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(worktree.exists())
+        self.assertIn("deleted ignored paths: node_modules/", result.stdout)
+
+    def test_ignored_env_file_in_submodule_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        submodule = worktree / "sub"
+        exclude = Path(self.fixture.git(submodule, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(".env\n", encoding="utf-8")
+        (submodule / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "sub/.env")
 
 
 if __name__ == "__main__":

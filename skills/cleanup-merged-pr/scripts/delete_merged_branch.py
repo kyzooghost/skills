@@ -8,16 +8,21 @@ Safety Net blocks direct git deletion commands. This script runs
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 
 EXIT_FAILED = 1
 BRANCH_REF_PREFIX = "refs/heads/"
+# Matches the sensitive-path list in commands/create-pr.md.
+SENSITIVE_NAME_PATTERNS = (".env*", "*.pem", "*.key", "*.p12", "id_rsa*")
+SENSITIVE_NAME_WORDS = ("credential", "secret")
+ENV_TEMPLATE_NAMES = frozenset({".env.example", ".env.sample", ".env.template"})
 
 
 class Refused(Exception):
@@ -41,6 +46,7 @@ class Plan:
     default_branch: str
     main_worktree: Path
     branch_worktree: Worktree | None
+    ignored_paths: tuple[str, ...]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -177,6 +183,38 @@ def check_submodules(worktree: Path) -> None:
             raise Refused(f"submodule {name} has commits that are on no remote")
 
 
+def is_sensitive(path: str) -> bool:
+    name = PurePosixPath(path).name
+    if name in ENV_TEMPLATE_NAMES:
+        return False
+    lowered = name.lower()
+    if any(word in lowered for word in SENSITIVE_NAME_WORDS):
+        return True
+    return any(fnmatch.fnmatch(name, pattern) for pattern in SENSITIVE_NAME_PATTERNS)
+
+
+def list_ignored(directory: Path) -> list[str]:
+    # No --directory: a sensitive file inside an ignored directory must still be listed.
+    output = git(directory, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+    return [path for path in output.split("\0") if path]
+
+
+def check_ignored(worktree: Path) -> tuple[str, ...]:
+    """Refuse on sensitive ignored files. Return regenerable ignored paths, collapsed to top level."""
+    # `ls-files` does not descend into submodules, but removal deletes their files too.
+    files = list_ignored(worktree)
+    for name in checked_out_git_dirs(worktree).values():
+        files.extend(f"{name}/{path}" for path in list_ignored(worktree / name))
+    sensitive = sorted(path for path in files if is_sensitive(path))
+    if sensitive:
+        raise Refused(f"worktree {worktree} has ignored files that may hold secrets: {', '.join(sensitive)}")
+    top_level = set()
+    for path in files:
+        parts = PurePosixPath(path).parts
+        top_level.add(parts[0] + "/" if len(parts) > 1 else parts[0])
+    return tuple(sorted(top_level))
+
+
 def ensure_commit(main_worktree: Path, oid: str, pr_number: int) -> str | None:
     """Return None if the commit is available locally, otherwise the reason it is not."""
     commit_ref = f"{oid}^{{commit}}"
@@ -240,13 +278,15 @@ def build_plan(repo: Path, branch_arg: str | None) -> Plan:
         paths = ", ".join(str(worktree.path) for worktree in checkouts)
         raise Refused(f"branch {branch} is checked out in {len(checkouts)} worktrees: {paths}")
     branch_worktree = checkouts[0] if checkouts else None
+    ignored_paths: tuple[str, ...] = ()
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
-        # `git switch` in the main checkout keeps its submodule git directories.
+        # `git switch` in the main checkout keeps its submodule git directories and ignored files.
         if branch_worktree.path != main_worktree:
             check_submodules(branch_worktree.path)
+            ignored_paths = check_ignored(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
-    return Plan(branch, tip, default, main_worktree, branch_worktree)
+    return Plan(branch, tip, default, main_worktree, branch_worktree, ignored_paths)
 
 
 def execute(plan: Plan) -> str | None:
@@ -286,6 +326,7 @@ def main(argv: list[str] | None = None) -> int:
     print(f"deleted branch: {plan.branch}")
     print(f"removed worktree: {removed or 'none'}")
     print(f"main worktree: {plan.main_worktree}")
+    print(f"deleted ignored paths: {', '.join(plan.ignored_paths) or 'none'}")
     return 0
 
 
