@@ -107,28 +107,28 @@ Usage errors exit `2`.
 
 ## Skill workflow
 
-1. **Resolve the target.** Use the current branch, or the PR number or branch the user gives. Read the PR with `gh pr view --json number,url,state,headRefName,baseRefName,body,closingIssuesReferences`. If the PR is open, or closed without merge, stop and report. If the branch has no PR, skip step 5. The script's "no commits ahead" check then decides whether the branch can be deleted.
+1. **Resolve the target.** Use the current branch, or the PR number or branch the user gives. Read the PR with `gh pr view --json number,url,state,headRefName,baseRefName,body,closingIssuesReferences`. If the PR is open, or closed without merge, stop and report. If the branch has no PR, use the branch the user named or the current branch, and skip step 5. The script's "no commits ahead" check then decides whether the branch can be deleted.
 2. **Leave the worktree.** If cwd is inside the branch's worktree, `cd` to the main worktree first.
 3. **Sync the default branch.** Resolve `<default>` with `gh repo view --json defaultBranchRef`, usually `main`. Run `git fetch --prune origin`. Then fast-forward local `<default>`:
    - If `<default>` is checked out, run `git -C <checkout> merge --ff-only origin/<default>`.
    - If not, run `git fetch origin <default>:<default>`.
 
    This step runs before deletion so the script's "no commits ahead" check uses fresh refs. If the fast-forward fails, record the reason and continue.
-4. **Delete.** Run `delete_merged_branch.py` outside the sandbox, because the sandbox keeps `.git/worktrees` read-only. If the script refuses, report its reason and keep the branch.
+4. **Delete.** Run `delete_merged_branch.py` outside the sandbox, because the sandbox keeps `.git/worktrees` read-only. If the script refuses or prints `error:`, report its output and keep going with steps 5 and 6. An `error:` can follow a partial deletion, such as a removed worktree whose branch deletion failed; the agent still never deletes directly.
 5. **Close issues.** GitHub links and closes issues from closing keywords only when the PR targets the default branch. For any other base, it ignores the keywords and creates no links. Classify each candidate issue by the PR's base:
 
    - **Base is `<default>`.** GitHub closes `closingIssuesReferences` issues on merge. An issue that is still open is certain only if `gh issue view <n> --json state,stateReason` does not show `REOPENED`. Close certain issues without asking. A reopened issue is uncertain, because someone chose to reopen it.
    - **Base is not `<default>`.** Collect issues from closing-keyword lines in the PR body (`Closes #N`, `Fixes #N`, `Resolves #N`, and their variants) and from `closingIssuesReferences`, which then holds only manual links. All are uncertain. When you ask, state that the change reached `<base>` but not `<default>`.
    - **Always uncertain:** bare `#N` mentions in the PR body or commit messages, and issue numbers in the branch name.
 
-   List all uncertain issues in one question and close only those the user confirms. Close each issue with:
+   Read each candidate's state with `gh issue view <n> -R <repo> --json state,stateReason`, because `closingIssuesReferences` holds no state. `<repo>` is the reference's repository, else the PR's, so a cross-repository reference such as `Closes acme/infra#7` is not confused with a local issue number. List all uncertain issues in one question and close only those the user confirms. Close each issue with:
 
    ```bash
-   gh issue close <n> --reason completed --comment "Resolved by <PR url>"
+   gh issue close <n> -R <repo> --reason completed --comment "Resolved by <PR url>"
    ```
 
 6. **Report.** State:
-   - the worktree and branch result, or the script's refusal reason
+   - the worktree and branch result, including deleted ignored paths, or the script's refusal or error
    - the default-branch sync result
    - issues closed by this run
    - issues already closed by GitHub
@@ -202,4 +202,4 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 - Check 3 trusts every remote-tracking ref in a submodule. A stale ref, left after a force-push or a remote branch deletion, can mark a commit as safe when no remote holds it. The skill fetches only the superproject. Accepted as a known limit.
 - Check 3 ignores tags. A local-only tag on a submodule commit that no branch, stash, or worktree HEAD holds is lost on removal. Git does not create that state in normal work. Accepted by the user to avoid false refusals from fetched release tags.
 - The `credential` and `secret` name rule can match build artifacts outside package directories, such as Foundry's `out/SecretStore.sol/SecretStore.json`. Cleanup is then refused until the user deletes the build output. Accepted, because users do keep real files in such directories.
-- Listing every ignored file can be slow in a worktree with a very large `node_modules/`. A prototype test suite ran in 15 seconds; measure on a real repo if it becomes a problem.
+- Listing every ignored file can be slow in a worktree with a very large `node_modules/`. Listing took 0.3 to 4 seconds on real repos with up to 207,674 ignored files. The 33-test suite takes about 50 seconds because each test builds real git repos.

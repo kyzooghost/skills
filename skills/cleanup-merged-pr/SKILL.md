@@ -5,19 +5,19 @@ description: Use when a pull request has merged and the user wants its local bra
 
 # Cleanup Merged PR
 
-Delete a merged branch and its worktree only through `scripts/delete_merged_branch.py` in this skill's directory. It deletes only after it proves no work can be lost.
+Delete branches and worktrees only through `<this-skill-dir>/scripts/delete_merged_branch.py` (`<this-skill-dir>` holds this file).
 
 ## Workflow
 
-1. **Resolve the PR.** `gh pr view [<number-or-branch>] --json number,url,state,headRefName,baseRefName,body,commits,closingIssuesReferences`. Not `MERGED`: stop and report. No PR: skip step 5.
+1. **Resolve the PR.** `gh pr view [<number-or-branch>] --json number,url,state,headRefName,baseRefName,body,commits,closingIssuesReferences`. Not `MERGED`: stop and report. `<branch>` is `headRefName`; with no PR, the named or current branch, and skip step 5.
 2. **Leave the worktree.** `cd` to the main worktree: the first `worktree` line of `git worktree list --porcelain`.
 3. **Sync the default branch.** `<default>` is `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`. Run `git fetch --prune origin`, then:
    - `<default>` checked out in a worktree: `git -C <that worktree> merge --ff-only origin/<default>`
    - otherwise: `git fetch origin <default>:<default>`
 
-   On failure, record the error and continue. Never reset, rebase, or switch branches.
-4. **Delete.** `python3 <skill dir>/scripts/delete_merged_branch.py --repo <main worktree> --branch <headRefName>`, outside the sandbox. Never delete the remote branch.
-5. **Close issues.**
+   On failure, record why and continue. Never reset, rebase, or switch branches.
+4. **Delete.** `python3 <this-skill-dir>/scripts/delete_merged_branch.py --repo <main worktree> --branch <branch>`, outside the sandbox. Never delete the remote branch.
+5. **Close issues.** Read candidates with `gh issue view <n> -R <repo> --json state,stateReason`. `<repo>` is the reference's repository, else the PR's.
 
    | Candidate | Base is `<default>` | Other base |
    |---|---|---|
@@ -25,22 +25,22 @@ Delete a merged branch and its worktree only through `scripts/delete_merged_bran
    | `close`/`fix`/`resolve` keyword + `#N` in the body | Same as above | Uncertain |
    | Other `#N` in body or commits; number in branch name | Uncertain | Uncertain |
 
-   Close certain issues with `gh issue close <n> --reason completed --comment "Resolved by <PR url>"`. Never decide uncertain issues yourself: ask about all of them in one question, with a recommendation for each. For another base, say the change reached `<base>` but not `<default>`.
+   Close certain issues with `gh issue close <n> -R <repo> --reason completed --comment "Resolved by <PR url>"`. Ask about all uncertain issues in one question, with a recommendation each. Never decide them yourself. For another base, say the change reached `<base>` but not `<default>`.
 6. **Report:**
 
    ```text
-   Branch: deleted <branch>, removed worktree <path> | refused: <reason>
+   Branch: deleted <branch>, removed worktree <path>, deleted ignored paths <paths> | refused: <reason> | error: <message>
    Default branch: fast-forwarded <default> to <short sha> | not synced: <reason>
    Issues closed by this run: #N, ... | none
    Issues already closed: #N, ... | none
    Issues left open: #N (<reason>), ... | none
    ```
 
-## When the script refuses
+## When the script refuses or fails
 
-`refused: <reason>` means deletion could lose work. Quote the reason, say what the user must do, and still finish steps 5 and 6.
+`refused:` means deletion could lose work. `error:` means a command failed, possibly after the worktree was removed. Quote it, say what the user must do, and still finish steps 5 and 6.
 
-Never, even if the user insists or calls the work junk:
+Never, even if the user insists or calls the work junk (they can delete it in one command; you cannot undo it):
 
 - run `git branch -D`, `git worktree remove`, `rm`, `trash`, `git update-ref -d`, or `git stash`
 - edit, move, or delete the files the refusal names
@@ -50,6 +50,6 @@ Never, even if the user insists or calls the work junk:
 
 | Excuse | Reality |
 |---|---|
-| "Nothing is deleted, I only moved it" | Moving the named file works around the refusal. The user decides where their files go. |
-| "The user said it's junk" | They can delete it with one command. You cannot undo a deletion. |
+| "Nothing is deleted, I only moved it" | Moving the named file works around the refusal. |
 | "The reopen looks intentional, so I left it open" | You decided for the user. Ask, with your recommendation. |
+| "Only `branch -D` failed, I'll finish it" | Report it. Never delete directly. |
