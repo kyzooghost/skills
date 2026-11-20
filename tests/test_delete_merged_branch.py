@@ -37,6 +37,9 @@ args = sys.argv[1:]
 if args[:2] == ["repo", "view"]:
     print('{"defaultBranchRef": {"name": "main"}}')
 elif args[:2] == ["pr", "list"] and "merged" in args:
+    # Tests always use the branch "feature".
+    if args[args.index("--head") + 1] != "feature":
+        sys.exit("unexpected --head value")
     print(os.environ["GH_STUB_MERGED_PRS"])
 else:
     sys.exit(f"unexpected gh call: {args}")
@@ -48,6 +51,7 @@ class Fixture:
 
     def __init__(self, root: Path) -> None:
         self.root = root
+        self.worktrees: list[Path] = []
         bin_dir = root / "bin"
         bin_dir.mkdir()
         gh = bin_dir / "gh"
@@ -85,6 +89,7 @@ class Fixture:
     def add_worktree(self, branch: str = FEATURE_BRANCH) -> Path:
         path = self.root / f"wt-{branch}"
         self.git(self.main_checkout, "worktree", "add", "-b", branch, str(path))
+        self.worktrees.append(path)
         return path
 
     def set_merged_prs(self, *head_oids: str) -> None:
@@ -121,6 +126,8 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertIn("refused:", result.stderr)
         self.assertIn(reason, result.stderr)
         self.assertTrue(self.fixture.branch_exists(FEATURE_BRANCH))
+        for worktree in self.fixture.worktrees:
+            self.assertTrue(worktree.exists(), f"{worktree} was removed")
 
     def test_merged_pr_matching_tip_deletes_current_worktree_and_branch(self) -> None:
         worktree = self.fixture.add_worktree()
@@ -170,6 +177,53 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.fixture.git(main_checkout, "branch", "--show-current"), DEFAULT_BRANCH)
         self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
+
+    def test_local_tip_behind_merged_head_is_deleted(self) -> None:
+        fixture = self.fixture
+        worktree = fixture.add_worktree()
+        fixture.commit(worktree, "feature.txt")
+        fixture.git(worktree, "push", "origin", FEATURE_BRANCH)
+        other = fixture.root / "other"
+        fixture.git(fixture.root, "clone", str(fixture.origin), str(other))
+        fixture.git(other, "checkout", FEATURE_BRANCH)
+        later_head = fixture.commit(other, "review-suggestion.txt")
+        fixture.git(other, "push", "origin", "HEAD:refs/pull/7/head")
+        fixture.set_merged_prs(later_head)
+
+        result = fixture.run_script("--repo", str(worktree))
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(fixture.branch_exists(FEATURE_BRANCH))
+
+    def test_unfetchable_merged_head_is_refused_with_fetch_error(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.commit(worktree, "feature.txt")
+        self.fixture.set_merged_prs("0" * 40)
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "could not fetch refs/pull/7/head")
+
+    def test_branch_not_checked_out_is_deleted(self) -> None:
+        main_checkout = self.fixture.main_checkout
+        self.fixture.git(main_checkout, "branch", FEATURE_BRANCH)
+
+        result = self.fixture.run_script("--repo", str(main_checkout), "--branch", FEATURE_BRANCH)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
+        self.assertIn("removed worktree: none", result.stdout)
+
+    def test_branch_in_two_worktrees_is_refused(self) -> None:
+        worktree = self.fixture.add_worktree()
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        second = self.fixture.root / "wt-feature-2"
+        self.fixture.git(self.fixture.main_checkout, "worktree", "add", "-f", str(second), FEATURE_BRANCH)
+        self.fixture.worktrees.append(second)
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "checked out in 2 worktrees")
 
     def test_default_branch_is_refused(self) -> None:
         result = self.fixture.run_script("--repo", str(self.fixture.main_checkout), "--branch", DEFAULT_BRANCH)
