@@ -581,6 +581,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
+> **Task 2 review outcome (commits `dab21ab`, `864bc06`, `f87d50d`):** three review rounds found submodule loss paths. `check_submodules` now checks every submodule git directory: the `--git-path modules` walk plus `checked_out_git_dirs` (embedded `.git` directories). It runs `rev-list --exclude=refs/tags/* --all --not --remotes` and a stash check, and runs only for linked worktrees. `--repo` defaults to `None` and resolves through `current_directory()`. The suite has 22 tests. Task 3 below is written against that code.
+
 ### Task 3: Ignored-file checks
 
 Covers spec check 4 and the ignored-path output line.
@@ -615,7 +617,24 @@ In `tests/test_delete_merged_branch.py`, add these methods to `DeleteMergedBranc
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(worktree.exists())
         self.assertIn("deleted ignored paths: node_modules/", result.stdout)
+
+    def test_ignored_env_file_in_submodule_is_refused(self) -> None:
+        self.fixture.add_submodule()
+        worktree = self.fixture.add_worktree()
+        self.fixture.git(worktree, "submodule", "update", "--init")
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        submodule = worktree / "sub"
+        exclude = Path(self.fixture.git(submodule, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(".env\n", encoding="utf-8")
+        (submodule / ".env").write_text("TOKEN=x\n", encoding="utf-8")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "sub/.env")
 ```
+
+The submodule test ignores `.env` through the submodule's `info/exclude`, so the superproject status stays clean and only the ignored-file check can refuse.
 
 Replace `test_branch_in_main_checkout_switches_to_default_then_deletes` with this version. It adds an `.env` to prove the main checkout is not blocked by ignored files:
 
@@ -637,23 +656,13 @@ Replace `test_branch_in_main_checkout_switches_to_default_then_deletes` with thi
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: `test_ignored_env_file_is_refused` FAILS with `AssertionError: 0 != 1`. `test_ignored_regenerable_directory_is_deleted_and_listed` FAILS because `deleted ignored paths` is not in stdout. The other 14 tests PASS.
+Expected: `test_ignored_env_file_is_refused` and `test_ignored_env_file_in_submodule_is_refused` FAIL with `AssertionError: 0 != 1`. `test_ignored_regenerable_directory_is_deleted_and_listed` FAILS because `deleted ignored paths` is not in stdout. The other 22 tests PASS.
 
 - [ ] **Step 3: Add the check**
 
 In `skills/cleanup-merged-pr/scripts/delete_merged_branch.py`:
 
-Replace the import block with:
-
-```python
-import argparse
-import fnmatch
-import json
-import subprocess
-import sys
-from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
-```
+Add `import fnmatch` to the imports, and change `from pathlib import Path` to `from pathlib import Path, PurePosixPath`.
 
 Replace the constants block:
 
@@ -699,11 +708,18 @@ def is_sensitive(path: str) -> bool:
     return any(fnmatch.fnmatch(name, pattern) for pattern in SENSITIVE_NAME_PATTERNS)
 
 
+def list_ignored(directory: Path) -> list[str]:
+    # No --directory: a sensitive file inside an ignored directory must still be listed.
+    output = git(directory, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
+    return [path for path in output.split("\0") if path]
+
+
 def check_ignored(worktree: Path) -> tuple[str, ...]:
     """Refuse on sensitive ignored files. Return regenerable ignored paths, collapsed to top level."""
-    # No --directory: a sensitive file inside an ignored directory must still be listed.
-    output = git(worktree, "ls-files", "--others", "--ignored", "--exclude-standard", "-z")
-    files = [path for path in output.split("\0") if path]
+    # `ls-files` does not descend into submodules, but removal deletes their files too.
+    files = list_ignored(worktree)
+    for name in checked_out_git_dirs(worktree).values():
+        files.extend(f"{name}/{path}" for path in list_ignored(worktree / name))
     sensitive = sorted(path for path in files if is_sensitive(path))
     if sensitive:
         raise Refused(f"worktree {worktree} has ignored files that may hold secrets: {', '.join(sensitive)}")
@@ -719,7 +735,9 @@ In `build_plan`, replace:
 ```python
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
-        check_submodules(branch_worktree.path)
+        # `git switch` in the main checkout keeps its submodule git directories.
+        if branch_worktree.path != main_worktree:
+            check_submodules(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
     return Plan(branch, tip, default, main_worktree, branch_worktree)
 ```
@@ -730,9 +748,9 @@ with:
     ignored_paths: tuple[str, ...] = ()
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
-        check_submodules(branch_worktree.path)
-        # Only removal deletes ignored files. `git switch` in the main checkout keeps them.
+        # `git switch` in the main checkout keeps its submodule git directories and ignored files.
         if branch_worktree.path != main_worktree:
+            check_submodules(branch_worktree.path)
             ignored_paths = check_ignored(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
     return Plan(branch, tip, default, main_worktree, branch_worktree, ignored_paths)
@@ -756,7 +774,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest tests.test_delete_merged_branch -v`
-Expected: 16 tests PASS.
+Expected: 25 tests PASS.
 
 - [ ] **Step 5: Run the full test suite**
 
