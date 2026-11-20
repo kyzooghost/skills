@@ -160,14 +160,19 @@ def submodule_git_dirs(worktree: Path) -> dict[Path, str]:
 
 def check_submodules(worktree: Path) -> None:
     # Removing the worktree with force deletes these git directories, including those of
-    # deinitialized submodules. `rev-list --all` covers every local branch, tag, stash and
-    # HEAD (of all worktrees of that git directory), so none of them may hold unpushed commits.
+    # deinitialized submodules. `--all` minus tags covers every local branch, the stash, and
+    # the HEAD of every worktree of that git directory, so none may hold unpushed commits.
+    # Tags are excluded because fetched release tags often point at commits that no remote
+    # branch contains. A local-only tag is an accepted gap.
     for git_dir, name in submodule_git_dirs(worktree).items():
         git_dir_option = f"--git-dir={git_dir}"
         stash = run_unchecked(["git", git_dir_option, "rev-parse", "--verify", "--quiet", "refs/stash"], worktree)
         if stash.returncode == 0:
             raise Refused(f"submodule {name} has a stash")
-        unpushed = run(["git", git_dir_option, "rev-list", "--all", "--not", "--remotes"], worktree)
+        unpushed = run(
+            ["git", git_dir_option, "rev-list", "--exclude=refs/tags/*", "--all", "--not", "--remotes"],
+            worktree,
+        )
         if unpushed.strip():
             raise Refused(f"submodule {name} has commits that are on no remote")
 
