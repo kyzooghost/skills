@@ -277,10 +277,12 @@ def format_paths(paths: list[str]) -> str:
     return f"{shown} and {hidden} more" if hidden > 0 else shown
 
 
-def check_ignored(worktree: Path) -> tuple[str, ...]:
-    """Inspect submodules and nested repositories, and refuse on sensitive ignored files.
+def inspect_worktree(worktree: Path) -> tuple[str, ...]:
+    """Refuse if removing the linked worktree would lose work or secrets. Return the regenerable ignored paths.
 
-    Return the ignored paths that removal deletes, collapsed to top level.
+    Checks submodule stashes and unpushed commits, uninitialized submodule paths, nested
+    repositories (including worktrees of this repository), and sensitive ignored files.
+    The returned ignored paths are collapsed to top level.
     """
     paths = inspect_tree(worktree, "", git_common_dir(worktree))
     sensitive = sorted(path for path in paths if not path.endswith("/") and is_sensitive(path))
@@ -356,8 +358,9 @@ def build_plan(repo: Path, branch_arg: str | None) -> Plan:
     if branch_worktree is not None:
         check_clean(branch_worktree.path)
         # `git switch` in the main checkout keeps its submodule git directories and ignored files.
+        # Removal of a linked worktree deletes them, so inspect_worktree must pass first.
         if branch_worktree.path != main_worktree:
-            ignored_paths = check_ignored(branch_worktree.path)
+            ignored_paths = inspect_worktree(branch_worktree.path)
     check_merged(main_worktree, branch, default, tip)
     return Plan(branch, tip, default, main_worktree, branch_worktree, ignored_paths)
 
