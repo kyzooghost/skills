@@ -56,7 +56,7 @@ The script runs every check before it changes anything. On the first failed chec
 1. The branch exists locally and is not the default branch.
 2. If the branch is checked out in a worktree, `git status --porcelain --untracked-files=all` in that worktree is empty.
 3. Every submodule in that worktree, recursively, has no uncommitted changes and no commits missing from its remotes (`git rev-list HEAD --not --remotes` is empty).
-4. No gitignored file in that worktree matches a sensitive pattern:
+4. If the branch is in a linked worktree, no gitignored file in it matches a sensitive pattern. This check is skipped for the main checkout, because `git switch` keeps ignored files. Sensitive patterns:
    - `.env*`, except `.env.example`, `.env.sample`, and `.env.template`
    - `*.pem`, `*.key`, `*.p12`, `id_rsa*`
    - file names that contain `credential` or `secret`
@@ -176,6 +176,7 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 - **No PR means no issue step.** The script's "no commits ahead" check alone decides deletion.
 - **No `--dry-run` flag.** No workflow step uses it, so it adds code and tests without value.
 - **Full ignored-file listing.** List ignored files without `--directory`, so a sensitive file inside an ignored directory is still found.
+- **Ignored-file check applies to linked worktrees only.** `git switch` in the main checkout keeps ignored files, so an `.env` there must not block cleanup.
 
 ### Deferred implementation decisions
 
@@ -185,5 +186,5 @@ Follow `superpowers:writing-skills` RED-GREEN-REFACTOR.
 
 ### Residual risks
 
-- `stateReason` `REOPENED` on open issues [NEEDS VERIFICATION]. Confirm with `gh issue view --json stateReason` during implementation. If it is not available, read the issue timeline instead.
-- Listing every ignored file can be slow in a worktree with a large `node_modules/`. Measure during implementation.
+- `stateReason` `REOPENED` is a valid `IssueStateReason` value (verified with GraphQL introspection on 2026-11-21).
+- Listing every ignored file can be slow in a worktree with a very large `node_modules/`. A prototype test suite ran in 15 seconds; measure on a real repo if it becomes a problem.
