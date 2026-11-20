@@ -28,21 +28,21 @@ GIT_CONFIG = """\
 """
 
 # Answers only the two gh calls the script makes.
-GH_STUB = """\
+GH_STUB = f"""\
 #!/usr/bin/env python3
 import os
 import sys
 
 args = sys.argv[1:]
 if args[:2] == ["repo", "view"]:
-    print('{"defaultBranchRef": {"name": "main"}}')
+    print('{{"defaultBranchRef": {{"name": "{DEFAULT_BRANCH}"}}}}')
 elif args[:2] == ["pr", "list"] and "merged" in args:
-    # Tests always use the branch "feature".
-    if args[args.index("--head") + 1] != "feature":
+    # Tests always use the feature branch.
+    if args[args.index("--head") + 1] != "{FEATURE_BRANCH}":
         sys.exit("unexpected --head value")
     print(os.environ["GH_STUB_MERGED_PRS"])
 else:
-    sys.exit(f"unexpected gh call: {args}")
+    sys.exit(f"unexpected gh call: {{args}}")
 """
 
 
@@ -92,19 +92,30 @@ class Fixture:
         self.worktrees.append(path)
         return path
 
-    def create_submodule_origin(self) -> Path:
-        source = self.root / "sub-src"
+    def create_submodule_origin(self, name: str = "sub", nested_origin: Path | None = None) -> Path:
+        """Create a bare repository `<name>.git`. With `nested_origin`, it holds that repository as `inner`."""
+        source = self.root / f"{name}-src"
         self.git(self.root, "init", str(source))
         self.commit(source, "lib.txt")
-        sub_origin = self.root / "sub.git"
-        self.git(self.root, "clone", "--bare", str(source), str(sub_origin))
-        return sub_origin
+        if nested_origin is not None:
+            self.git(source, "submodule", "add", str(nested_origin), "inner")
+            self.git(source, "commit", "-m", "add inner")
+        origin = self.root / f"{name}.git"
+        self.git(self.root, "clone", "--bare", str(source), str(origin))
+        return origin
 
-    def add_submodule(self) -> None:
-        sub_origin = self.create_submodule_origin()
+    def add_submodule(self, nested_origin: Path | None = None) -> None:
+        sub_origin = self.create_submodule_origin(nested_origin=nested_origin)
         self.git(self.main_checkout, "submodule", "add", str(sub_origin), "sub")
         self.git(self.main_checkout, "commit", "-m", "add submodule")
         self.git(self.main_checkout, "push", "origin", DEFAULT_BRANCH)
+
+    def worktree_with_submodule(self, nested_origin: Path | None = None) -> Path:
+        """Return a linked worktree whose submodule `sub` is checked out. Nested submodules are not."""
+        self.add_submodule(nested_origin)
+        worktree = self.add_worktree()
+        self.git(worktree, "submodule", "update", "--init")
+        return worktree
 
     def ignore_locally(self, repo: Path, *patterns: str) -> None:
         """Append patterns to the repository's `info/exclude`, so `git status` stays clean."""
@@ -262,7 +273,6 @@ class DeleteMergedBranchTest(unittest.TestCase):
         result = self.fixture.run_script("--repo", str(worktree))
 
         self.assert_refused(result, "uncommitted changes")
-        self.assertTrue(worktree.exists())
 
     def test_untracked_file_is_refused(self) -> None:
         worktree = self.fixture.add_worktree()
@@ -274,9 +284,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, "notes.txt")
 
     def test_dirty_submodule_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         (worktree / "sub" / "scratch.txt").write_text("draft\n", encoding="utf-8")
 
@@ -285,9 +293,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, "has uncommitted changes")
 
     def test_submodule_commit_on_no_remote_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.commit(worktree / "sub", "local-only.txt")
         self.fixture.git(worktree, "add", "sub")
         self.fixture.git(worktree, "commit", "-m", "bump submodule")
@@ -297,11 +303,8 @@ class DeleteMergedBranchTest(unittest.TestCase):
 
         self.assert_refused(result, "submodule sub has commits that are on no remote")
 
-
     def test_submodule_branch_on_no_remote_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         self.fixture.git(worktree / "sub", "switch", "-c", "wip")
         self.fixture.commit(worktree / "sub", "wip.txt")
@@ -312,9 +315,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, "submodule sub has commits that are on no remote")
 
     def test_submodule_stash_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         (worktree / "sub" / "lib.txt").write_text("changed\n", encoding="utf-8")
         self.fixture.git(worktree / "sub", "stash")
@@ -324,9 +325,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, "submodule sub has a stash")
 
     def test_deinitialized_submodule_with_unpushed_commit_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.commit(worktree / "sub", "local-only.txt")
         self.fixture.git(worktree, "add", "sub")
         self.fixture.git(worktree, "commit", "-m", "bump submodule")
@@ -352,7 +351,6 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(self.fixture.branch_exists(FEATURE_BRANCH))
 
-
     def test_embedded_submodule_git_dir_with_unpushed_commit_is_refused(self) -> None:
         self.fixture.add_submodule()
         worktree = self.fixture.add_worktree()
@@ -367,9 +365,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, "submodule libx has commits that are on no remote")
 
     def test_submodule_worktree_commit_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         sub_worktree = self.fixture.root / "subwt"
         self.fixture.git(worktree / "sub", "worktree", "add", "--detach", str(sub_worktree))
@@ -437,14 +433,10 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertIn("deleted ignored paths: node_modules/", result.stdout)
 
     def test_ignored_env_file_in_submodule_is_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         submodule = worktree / "sub"
-        exclude = Path(self.fixture.git(submodule, "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
-        exclude.parent.mkdir(parents=True, exist_ok=True)
-        exclude.write_text(".env\n", encoding="utf-8")
+        self.fixture.ignore_locally(submodule, ".env")
         (submodule / ".env").write_text("TOKEN=x\n", encoding="utf-8")
 
         result = self.fixture.run_script("--repo", str(worktree))
@@ -525,6 +517,18 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse(worktree.exists())
 
+    def test_files_at_uninitialized_path_inside_submodule_are_refused(self) -> None:
+        inner_origin = self.fixture.create_submodule_origin("inner")
+        worktree = self.fixture.worktree_with_submodule(inner_origin)
+        self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
+        (worktree / "sub" / "inner" / "notes.txt").write_text("draft\n", encoding="utf-8")
+        status = self.fixture.git(worktree, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=none")
+        self.assertEqual(status, "")
+
+        result = self.fixture.run_script("--repo", str(worktree))
+
+        self.assert_refused(result, "submodule path sub/inner is not initialized but contains files")
+
     def test_sensitive_looking_names_in_package_directories_do_not_block(self) -> None:
         worktree = self.fixture.add_worktree()
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
@@ -551,9 +555,7 @@ class DeleteMergedBranchTest(unittest.TestCase):
         self.assert_refused(result, ".ENV")
 
     def test_files_at_deinitialized_submodule_path_are_refused(self) -> None:
-        self.fixture.add_submodule()
-        worktree = self.fixture.add_worktree()
-        self.fixture.git(worktree, "submodule", "update", "--init")
+        worktree = self.fixture.worktree_with_submodule()
         self.fixture.git(worktree, "submodule", "deinit", "-f", "sub")
         self.fixture.set_merged_prs(self.fixture.commit(worktree, "feature.txt"))
         (worktree / "sub" / "notes.txt").write_text("draft\n", encoding="utf-8")

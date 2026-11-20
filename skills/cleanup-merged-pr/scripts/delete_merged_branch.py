@@ -15,6 +15,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 
 EXIT_FAILED = 1
@@ -98,7 +99,7 @@ def git_succeeds(cwd: Path, *args: str) -> bool:
     return run_unchecked(["git", "-C", str(cwd), *args], cwd).returncode == 0
 
 
-def gh_json(cwd: Path, *args: str):
+def gh_json(cwd: Path, *args: str) -> Any:
     try:
         return json.loads(run(["gh", *args], cwd))
     except json.JSONDecodeError as error:
@@ -161,8 +162,8 @@ def checked_out_git_dirs(worktree: Path) -> dict[Path, str]:
     return {Path(git_dir).resolve(): name for name, git_dir in zip(fields[0::2], fields[1::2])}
 
 
-def submodule_git_dirs(worktree: Path) -> dict[Path, str]:
-    git_dirs = checked_out_git_dirs(worktree)
+def submodule_git_dirs(worktree: Path, checked_out: dict[Path, str]) -> dict[Path, str]:
+    git_dirs = dict(checked_out)
     for git_dir, name in modules_git_dirs(worktree).items():
         git_dirs.setdefault(git_dir, name)
     return git_dirs
@@ -196,10 +197,10 @@ def check_uninitialized_submodule_paths(directory: Path, prefix: str) -> None:
             raise Refused(f"submodule path {prefix}{path} is not initialized but contains files")
 
 
-def check_submodules(directory: Path, prefix: str) -> None:
+def check_submodules(directory: Path, prefix: str, checked_out: dict[Path, str]) -> None:
     check_uninitialized_submodule_paths(directory, prefix)
     # Removal also deletes the git directories of deinitialized submodules.
-    for git_dir, name in submodule_git_dirs(directory).items():
+    for git_dir, name in submodule_git_dirs(directory, checked_out).items():
         check_git_dir_pushed(git_dir, f"submodule {prefix}{name}", directory)
 
 
@@ -258,11 +259,15 @@ def inspect_ignored(directory: Path, prefix: str, superproject_common_dir: Path)
 
 def inspect_tree(directory: Path, prefix: str, superproject_common_dir: Path) -> list[str]:
     """Check submodules and nested repositories under `directory`. Return its ignored paths, prefixed."""
-    check_submodules(directory, prefix)
+    checked_out = checked_out_git_dirs(directory)
+    check_submodules(directory, prefix, checked_out)
     paths = inspect_ignored(directory, prefix, superproject_common_dir)
     # `ls-files` does not descend into submodules, but removal deletes their files too.
-    for name in checked_out_git_dirs(directory).values():
-        paths.extend(inspect_ignored(directory / name, f"{prefix}{name}/", superproject_common_dir))
+    for name in checked_out.values():
+        submodule = directory / name
+        submodule_prefix = f"{prefix}{name}/"
+        check_uninitialized_submodule_paths(submodule, submodule_prefix)
+        paths.extend(inspect_ignored(submodule, submodule_prefix, superproject_common_dir))
     return paths
 
 
@@ -377,7 +382,12 @@ def execute(plan: Plan) -> str | None:
         else:
             git(plan.main_worktree, "worktree", "remove", "--force", str(plan.branch_worktree.path))
             removed = str(plan.branch_worktree.path)
-    git(plan.main_worktree, "branch", "-D", plan.branch)
+    try:
+        git(plan.main_worktree, "branch", "-D", plan.branch)
+    except CommandFailed as error:
+        if removed is None:
+            raise
+        raise CommandFailed(f"{error} (worktree {removed} was already removed)") from error
     return removed
 
 
@@ -385,13 +395,6 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
         plan = build_plan((args.repo or current_directory()).resolve(), args.branch)
-    except Refused as error:
-        print(f"refused: {error}", file=sys.stderr)
-        return EXIT_FAILED
-    except CommandFailed as error:
-        print(f"error: {error}", file=sys.stderr)
-        return EXIT_FAILED
-    try:
         removed = execute(plan)
     except Refused as error:
         print(f"refused: {error}", file=sys.stderr)
