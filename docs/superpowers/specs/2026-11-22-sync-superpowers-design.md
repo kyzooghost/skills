@@ -104,13 +104,13 @@ Read state with `claude plugin marketplace list --json` and `claude plugin list 
 
 1. Marketplace:
    - If no marketplace named `superpowers-dev` exists: `claude plugin marketplace add <checkout-dir>`.
-   - If one exists with a source other than `<checkout-dir>`: `claude plugin marketplace remove superpowers-dev`, then add as above. Today's `--json` output shows only GitHub marketplaces (`source`, `repo`, `installLocation`). The field that holds a local path is not yet confirmed. The implementation must confirm it by adding a local marketplace and reading the output.
+   - If one exists with a source other than `<checkout-dir>`: `claude plugin marketplace remove superpowers-dev`, then add as above. A local marketplace is listed as `"source": "directory"` with its location in `"path"`. This was confirmed with an isolated `CLAUDE_CONFIG_DIR`. Removing the marketplace also uninstalls its plugins.
    - Otherwise: `claude plugin marketplace update superpowers-dev`.
 2. Plugin:
-   - If `superpowers@superpowers-dev` is not installed at user scope: `claude plugin install superpowers@superpowers-dev`.
-   - Otherwise: `claude plugin update superpowers@superpowers-dev`.
+   - If `superpowers@superpowers-dev` is not installed at user scope, or the marketplace was just replaced: `claude plugin install superpowers@superpowers-dev --scope user`.
+   - Otherwise: `claude plugin update superpowers@superpowers-dev --scope user`.
 3. Duplicates: for each other installed id `superpowers@<marketplace>`:
-   - User scope: `claude plugin uninstall superpowers@<marketplace>`.
+   - User scope: `claude plugin uninstall superpowers@<marketplace> --scope user`.
    - Project or local scope: print a warning with the `projectPath`. Do not change it.
 4. Verify: `claude plugin list --json` shows `superpowers@superpowers-dev` at user scope, enabled, with `version` equal to the tag without its leading `v`.
 
