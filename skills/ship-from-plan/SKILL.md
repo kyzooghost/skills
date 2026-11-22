@@ -1,13 +1,13 @@
 ---
 name: ship-from-plan
-description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green pull request marked ready for review, with explicitly selected implementer and reviewer models.
+description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green pull request marked ready for review, with explicitly selected implementer, reviewer, and differential-reviewer models.
 ---
 
 # Ship From Plan
 
 ## Overview
 
-Execute one completed implementation plan through isolation, implementation, ready PR creation, CI convergence, and differential-review convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
+Execute one completed implementation plan through isolation, implementation, ready PR creation, a single differential review, and CI convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
 
 Invocation grants standing authorization for all AI-resolvable edits, commits, and pushes. Do not pause at nested routine approval gates. Human authority is still required for product, protocol, security-boundary, irreversible-data, and external-compatibility decisions.
 
@@ -20,6 +20,7 @@ Required:
 - `PLAN_PATH`: repository-relative path to a completed implementation plan.
 - `IMPLEMENTOR_MODEL`: friendly name from `references/model-map.md`.
 - `REVIEWER_MODEL`: friendly name from `references/model-map.md`.
+- `DIFF_REVIEWER_MODEL`: friendly name from `references/model-map.md`. Used only by the Stage 4 differential-review subagent.
 
 Optional:
 
@@ -34,7 +35,7 @@ If a required input is missing, ask for it before starting Stage 1. Model select
 1. Read `PLAN_PATH` once. Require a writing-plans header and checkbox tasks. Stop if the file is missing or is not an implementation plan.
 2. Read `references/model-map.md`.
 3. Detect the active environment from runtime agent capabilities.
-4. Resolve both friendly model names and confirm they are dispatchable. If either is unavailable, list available identifiers and ask the user to choose; never substitute.
+4. Resolve all three friendly model names and confirm they are dispatchable. If any is unavailable, list available identifiers and ask the user to choose; never substitute.
 5. Require a Git repository with an `origin` remote.
 6. Derive `BRANCH_NAME` from the plan stem when omitted.
 7. Detect an existing branch, worktree, or PR using the intended branch name. V1 does not resume across sessions. If ownership cannot be proven for this invocation, stop and report the existing worktree, branch, PR URL, and observable head commit. Do not adopt or duplicate them.
@@ -108,36 +109,15 @@ Stop if creation fails or the PR cannot be marked ready. Do not run `gh pr ready
 
 If `/create-pr` changed `HEAD`, run another whole-branch review with `REVIEWER_MODEL`, resolve every AI-owned finding, and push the reviewed head before Stage 4.
 
-## Stage 4: Converge CI
+## Stage 4: Differential Review and Triage
 
-Wait for every check on the current PR head to reach a terminal state. Polling while checks run does not count as a fix round.
-
-If all checks pass, continue to Stage 5.
-
-If no checks exist, stop because readiness cannot be established.
-
-For a terminal failing head:
-
-1. Invoke `/fix-ci` for the PR.
-2. Analyze all failures before editing.
-3. Treat this invocation as standing authorization for every AI-resolvable fix and the resulting commit.
-4. Skip nested per-fix and commit approval prompts.
-5. Apply all AI-resolvable fixes, commit with `fix(ci): resolve CI failures`, and push.
-6. Wait for checks on the new head to finish.
-
-If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
-
-Track the number of failed checks after every completed fix round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
-
-Never count polling calls as rounds. Never claim green while checks are missing, pending, skipped without an accepted policy, failed, cancelled, or timed out.
-
-## Stage 5: Differential Review and Triage
+Run one differential review. Do not repeat it after fixes.
 
 Apply the `differential-review` applicability gate first.
 
-If the change is documentation-only, formatting-only, or otherwise explicitly excluded, record Stage 5 as `NOT_APPLICABLE` with the exact reason and retain the Stage 2 final-review result.
+If the change is documentation-only, formatting-only, or otherwise explicitly excluded, record Stage 4 as `NOT_APPLICABLE` with the exact reason, retain the Stage 2 final-review result, and continue to Stage 5.
 
-For applicable changes, dispatch a reviewer subagent using `REVIEWER_MODEL` and require it to read and follow `differential-review`.
+For applicable changes, dispatch one reviewer subagent using `DIFF_REVIEWER_MODEL` and require it to read and follow `differential-review` against the current PR head.
 
 Create private artifact storage:
 
@@ -148,11 +128,11 @@ ARTIFACT_DIR="$(git rev-parse --git-path ship-from-plan)/$PLAN_STEM"
 mkdir -p "$ARTIFACT_DIR"
 ```
 
-Move each full differential-review report into `ARTIFACT_DIR` before staging or pushing anything. Never stage, commit, publish, or paste the full report into the PR.
+Move the full differential-review report into `ARTIFACT_DIR` before staging or pushing anything. Never stage, commit, publish, or paste the full report into the PR.
 
 Triage every finding:
 
-- `AI_RESOLVABLE`: the correct fix does not require product, protocol, security-boundary, irreversible-data, or external-compatibility authority. Include it in the round's fix batch. Size, file count, and complexity do not change this classification.
+- `AI_RESOLVABLE`: the correct fix does not require product, protocol, security-boundary, irreversible-data, or external-compatibility authority. Include it in the fix batch. Size, file count, and complexity do not change this classification.
 - `HUMAN_DECISION`: the fix requires one of those authorities. Append it to `$ARTIFACT_DIR/decisions.md` and continue triaging the remaining findings.
 
 Use this exact decision entry:
@@ -171,15 +151,60 @@ Use this exact decision entry:
 After triage:
 
 1. Apply all `AI_RESOLVABLE` findings as one batch.
-2. Run affected tests.
-3. Commit with `fix(review): address differential findings`.
-4. Push.
-5. Return to Stage 4 until CI is green on the new head.
-6. Run a fresh full differential review against the updated head.
+2. Run affected tests. If a fix cannot pass affected tests, remove that fix from the batch and record its finding as unapplied.
+3. If the batch is not empty, commit with `fix(review): address differential findings` and push.
+4. Continue to Stage 5.
 
-Repeat until no AI-resolvable finding remains. Stop after 3 consecutive full review rounds that do not reduce the unresolved AI-resolvable finding count.
+Do not run a second differential review. Affected tests and Stage 5 CI are the only checks on the fix batch.
+
+Record the Stage 4 status:
+
+- `CLEAN`: the review reported no findings.
+- `ADDRESSED`: the review reported findings and the fix batch is complete. Report every unapplied AI-resolvable finding separately.
+- `NOT_APPLICABLE`: the applicability gate excluded the change.
 
 Human decisions do not stop triage of later findings. An open decision does not return the PR to draft. The PR stays ready.
+
+## Stage 5: Converge CI
+
+Read the checks on the current PR head:
+
+```bash
+set -euo pipefail
+gh pr checks "$PR_NUMBER" --json name,state,bucket,link,workflow
+```
+
+With `--json`, `gh pr checks` exits 0 even when checks fail or are pending. A nonzero exit means the PR has no checks or the command failed. Checks can take a short time to appear after a push. On the error `no checks reported on the '<branch>' branch`, retry for up to 5 minutes. If no checks appear, stop because readiness cannot be established. For any other error, stop and report it.
+
+Classify each check by its `state`, not its `bucket`. `gh` puts `ACTION_REQUIRED` in the `fail` bucket, so a bucket-only reading treats an approval gate as a failure.
+
+- Approval-gated: `state` is `WAITING` or `ACTION_REQUIRED`. The check waits for a human, such as an environment review or a workflow-run approval.
+- Automatic: every other check.
+
+Wait until every automatic check is terminal, which means its `bucket` is not `pending`. An automatic check passed when its `bucket` is `pass` or `skipping`. Polling does not count as a fix round. Jobs that a pending approval blocks may not exist yet. Do not wait for them.
+
+Then act on the result:
+
+| Automatic checks | Approval-gated checks | Action |
+|---|---|---|
+| One or more failed, cancelled, or timed out | Any | Run a fix round. |
+| All passed | None | CI is green. Continue to Final Readiness. |
+| All passed | One or more | Stop CI convergence. Record each gated check `name`, `workflow`, and `link`, and continue to Final Readiness, which reports `CONDITIONAL`. |
+
+A fix round:
+
+1. Invoke `/fix-ci` for the PR.
+2. Analyze all failures before editing.
+3. Treat this invocation as standing authorization for every AI-resolvable fix and the resulting commit.
+4. Skip nested per-fix and commit approval prompts.
+5. Apply all AI-resolvable fixes, commit with `fix(ci): resolve CI failures`, and push.
+6. Read and classify the checks on the new head again.
+
+If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
+
+Count automatic checks whose `bucket` is `fail` or `cancel` before the first fix round and after every completed round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
+
+Never count polling calls as rounds. Never claim green while an automatic check is missing, pending, failed, cancelled, or timed out, or while an approval-gated check exists.
 
 ## Final Readiness
 
@@ -194,9 +219,8 @@ fi
 
 Report status `CONDITIONAL` when any of these are true:
 
-- CI is not green on the current head.
-- Differential review is neither clean nor `NOT_APPLICABLE`.
-- An AI-resolvable finding remains.
+- CI is not green on the current head. If Stage 5 stopped at an approval gate, report it as "awaiting CI approval".
+- An AI-resolvable finding was not applied.
 - A private decision entry has `Status: OPEN`.
 
 `CONDITIONAL` changes the report. It does not return the PR to draft.
@@ -206,7 +230,9 @@ Print:
 - PR URL, base, head, and readiness state.
 - Implementation and CI commits.
 - Differential-review fix commits.
-- Differential-review status or `NOT_APPLICABLE` reason.
+- Stage 4 status: `CLEAN`, `ADDRESSED`, or the `NOT_APPLICABLE` reason. State that the differential-review fix batch was not re-reviewed.
+- Every unapplied AI-resolvable finding.
+- Every pending approval-gated check, with its `name`, `workflow`, and `link`.
 - Exact private report and decision-ledger paths.
 - Every unresolved human decision.
 
@@ -217,16 +243,17 @@ Retain the worktree while any private decision remains open. Never invoke branch
 Stop and report actionable context for:
 
 - Missing or invalid plan.
-- Missing required model input.
-- Unmapped or unavailable selected model.
+- Missing `IMPLEMENTOR_MODEL`, `REVIEWER_MODEL`, or `DIFF_REVIEWER_MODEL`.
+- Unmapped or unavailable selected model, for any of the three inputs.
 - Missing Git `origin`.
 - Ambiguous existing branch, worktree, or PR.
 - Isolation or baseline-test failure.
 - Blocker requiring another model or human authority.
 - PR creation failure, or failure to mark the PR ready.
 - Missing CI checks.
+- Any other `gh pr checks` error.
 - CI 3-round no-progress limit.
-- Differential-review 3-round no-progress limit.
+- CI awaiting manual approval after all automatic checks pass. Continue to Final Readiness. The PR stays ready and the report is `CONDITIONAL`.
 - Failure to keep security artifacts private.
 
 All other local, reversible, AI-resolvable implementation choices are covered by standing authorization.
