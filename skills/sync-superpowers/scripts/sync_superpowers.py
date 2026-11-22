@@ -9,6 +9,7 @@ loads the checkout as a local-path plugin marketplace. Codex and Cursor load
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import shutil
@@ -20,6 +21,11 @@ from pathlib import Path
 
 REPO_SLUG = "obra/superpowers"
 REPO_URL = f"https://github.com/{REPO_SLUG}.git"
+MARKETPLACE = "superpowers-dev"
+PLUGIN = "superpowers"
+PLUGIN_ID = f"{PLUGIN}@{MARKETPLACE}"
+USER_SCOPE = "user"
+DIRECTORY_SOURCE = "directory"
 SKILLS_DIR = "skills"
 SKILL_MD = "SKILL.md"
 DEFAULT_CHECKOUT_DIR = Path.home() / ".local" / "share" / "superpowers"
@@ -171,6 +177,79 @@ def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
         git(checkout_dir, "checkout", "--quiet", "--detach", f"refs/tags/{tag}")
 
 
+def run_write(cmd: list[str], report: Report) -> None:
+    report.action(f"run: {shlex.join(cmd)}")
+    if not report.dry_run:
+        run(cmd)
+
+
+def read_json(cmd: list[str]) -> object:
+    output = run(cmd)
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as error:
+        raise SyncError(f"invalid JSON from {shlex.join(cmd)}: {error}") from None
+
+
+def points_at(marketplace: dict, checkout_dir: Path) -> bool:
+    path = marketplace.get("path")
+    return (
+        marketplace.get("source") == DIRECTORY_SOURCE
+        and path is not None
+        and Path(path).resolve() == checkout_dir
+    )
+
+
+def verify_claude(tag: str) -> dict:
+    expected = tag.removeprefix("v")
+    for plugin in read_json(["claude", "plugin", "list", "--json"]):
+        if plugin.get("id") == PLUGIN_ID and plugin.get("scope") == USER_SCOPE:
+            if plugin.get("version") != expected or not plugin.get("enabled"):
+                raise SyncError(
+                    f"Claude reports {PLUGIN_ID} version {plugin.get('version')} "
+                    f"enabled={plugin.get('enabled')}; expected {expected} enabled"
+                )
+            return plugin
+    raise SyncError(f"Claude does not list {PLUGIN_ID} at user scope after install")
+
+
+def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
+    marketplaces = read_json(["claude", "plugin", "marketplace", "list", "--json"])
+    current = next((m for m in marketplaces if m.get("name") == MARKETPLACE), None)
+    add = ["claude", "plugin", "marketplace", "add", str(checkout_dir)]
+    if current is None:
+        run_write(add, report)
+    elif not points_at(current, checkout_dir):
+        # Removing the marketplace also uninstalls its plugins, so the
+        # plugin list read below sees ours as missing and reinstalls it.
+        run_write(["claude", "plugin", "marketplace", "remove", MARKETPLACE], report)
+        run_write(add, report)
+    else:
+        run_write(["claude", "plugin", "marketplace", "update", MARKETPLACE], report)
+
+    plugins = read_json(["claude", "plugin", "list", "--json"])
+    installed = any(p.get("id") == PLUGIN_ID and p.get("scope") == USER_SCOPE for p in plugins)
+    run_write(["claude", "plugin", "update" if installed else "install", PLUGIN_ID], report)
+
+    uninstalled: set[str] = set()
+    for plugin in plugins:
+        plugin_id = plugin.get("id", "")
+        if plugin_id == PLUGIN_ID or plugin_id.split("@")[0] != PLUGIN:
+            continue
+        scope = plugin.get("scope")
+        if scope == USER_SCOPE:
+            if plugin_id not in uninstalled:
+                run_write(["claude", "plugin", "uninstall", plugin_id], report)
+                uninstalled.add(plugin_id)
+        else:
+            project = plugin.get("projectPath", "an unknown project")
+            report.warn(f"Claude plugin {plugin_id} is installed at {scope} scope for {project}; left unchanged")
+
+    if report.dry_run:
+        return None
+    return verify_claude(tag)
+
+
 def link_target(link: Path) -> Path:
     """Return the absolute target of a symlink, without following the final component."""
     target = Path(os.readlink(link))
@@ -227,10 +306,15 @@ def warn_duplicates(skills: tuple[str, ...], report: Report) -> None:
                 )
 
 
-def print_summary(release: Release, links: LinkChanges, report: Report) -> None:
+def print_summary(release: Release, claude_plugin: dict | None, links: LinkChanges, report: Report) -> None:
     print()
     suffix = " (dry run: nothing changed)" if report.dry_run else ""
     print(f"superpowers {release.tag}{suffix}")
+    if claude_plugin:
+        print(
+            f"claude: {claude_plugin['id']} scope={claude_plugin['scope']} "
+            f"version={claude_plugin['version']}"
+        )
     print(
         f"links: {len(links.created)} created, {len(links.updated)} updated, "
         f"{len(links.pruned)} removed, {len(release.skills)} total"
@@ -252,6 +336,8 @@ def main() -> int:
         completed = "preflight"
         checkout_tag(checkout_dir, release.tag, report)
         completed = "checkout"
+        claude_plugin = sync_claude(checkout_dir, release.tag, report)
+        completed = "claude"
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         warn_duplicates(release.skills, report)
         completed = "links"
@@ -260,7 +346,7 @@ def main() -> int:
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
         return 1
-    print_summary(release, links, report)
+    print_summary(release, claude_plugin, links, report)
     return 0
 
 

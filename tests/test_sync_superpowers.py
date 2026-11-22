@@ -30,6 +30,7 @@ GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 FAKE_CLI = r'''
 import json
 import os
+import subprocess
 import sys
 
 tool, args = sys.argv[1], sys.argv[2:]
@@ -55,6 +56,19 @@ def save():
 
 def emit(value):
     print(json.dumps(value))
+
+
+def plugin_version():
+    # Real Claude reports the version of the checkout tag. A test can pin a
+    # different version in state to simulate a stale or broken install.
+    if state["plugin_version"] is not None:
+        return state["plugin_version"]
+    path = next(m["path"] for m in state["claude_marketplaces"] if m["name"] == "superpowers-dev")
+    tag = subprocess.run(
+        ["git", "-C", path, "describe", "--tags", "--exact-match"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return tag.removeprefix("v")
 
 
 sub = args[1:]  # drop "release" for gh, "plugin" for claude and codex
@@ -83,13 +97,13 @@ elif tool == "claude":
         emit(state["claude_plugins"])
     elif sub[:1] == ["install"]:
         state["claude_plugins"].append(
-            {"id": sub[1], "version": state["plugin_version"], "scope": "user", "enabled": True}
+            {"id": sub[1], "version": plugin_version(), "scope": "user", "enabled": True}
         )
         save()
     elif sub[:1] == ["update"]:
         for plugin in state["claude_plugins"]:
             if plugin["id"] == sub[1] and plugin["scope"] == "user":
-                plugin["version"] = state["plugin_version"]
+                plugin["version"] = plugin_version()
         save()
     elif sub[:1] == ["uninstall"]:
         state["claude_plugins"] = [
@@ -174,7 +188,7 @@ def install_fake_cli(bin_dir: Path) -> None:
 def default_state() -> dict:
     return {
         "latest_tag": "v1.1.0",
-        "plugin_version": "1.0.0",
+        "plugin_version": None,
         "fail": None,
         "claude_marketplaces": [],
         "claude_plugins": [],
@@ -432,6 +446,99 @@ class SyncSuperpowersTest(unittest.TestCase):
 
         self.assert_ok(result)
         self.assertEqual(self.checkout_tag(), "v1.0.0")
+
+
+    def test_first_run_adds_marketplace_and_installs_plugin(self) -> None:
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        claude_writes = [c for c in self.tool_calls("claude") if "list" not in c]
+        self.assertEqual(
+            claude_writes,
+            [
+                ["claude", "plugin", "marketplace", "add", str(self.checkout)],
+                ["claude", "plugin", "install", PLUGIN_ID],
+            ],
+        )
+        self.assertIn(f"claude: {PLUGIN_ID} scope=user version=1.0.0", result.stdout)
+
+    def test_second_run_updates_marketplace_and_plugin(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        self.clear_log()
+        self.update_state(plugin_version="1.1.0")
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        claude_writes = [c for c in self.tool_calls("claude") if "list" not in c]
+        self.assertEqual(
+            claude_writes,
+            [
+                ["claude", "plugin", "marketplace", "update", MARKETPLACE],
+                ["claude", "plugin", "update", PLUGIN_ID],
+            ],
+        )
+
+    def test_marketplace_pointing_elsewhere_is_replaced(self) -> None:
+        self.update_state(
+            claude_marketplaces=[{"name": MARKETPLACE, "source": "github", "repo": "obra/superpowers"}],
+            claude_plugins=[{"id": PLUGIN_ID, "version": "0.9.0", "scope": "user", "enabled": True}],
+        )
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        claude_writes = [c for c in self.tool_calls("claude") if "list" not in c]
+        self.assertEqual(
+            claude_writes,
+            [
+                ["claude", "plugin", "marketplace", "remove", MARKETPLACE],
+                ["claude", "plugin", "marketplace", "add", str(self.checkout)],
+                ["claude", "plugin", "install", PLUGIN_ID],
+            ],
+        )
+
+    def test_other_superpowers_plugins_uninstalled_at_user_scope_only(self) -> None:
+        self.update_state(
+            claude_plugins=[
+                {"id": "superpowers@superpowers-marketplace", "version": "5.1.0", "scope": "user", "enabled": True},
+                {"id": "superpowers@superpowers-marketplace", "version": "5.1.0", "scope": "local",
+                 "enabled": True, "projectPath": "/work/yt"},
+                {"id": "superpowers@claude-plugins-official", "version": "7.0.2", "scope": "user", "enabled": False},
+                {"id": "safety-net@cc-marketplace", "version": "1.0.0", "scope": "user", "enabled": True},
+            ],
+        )
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        uninstalls = [c for c in self.tool_calls("claude") if c[2] == "uninstall"]
+        self.assertEqual(
+            uninstalls,
+            [
+                ["claude", "plugin", "uninstall", "superpowers@superpowers-marketplace"],
+                ["claude", "plugin", "uninstall", "superpowers@claude-plugins-official"],
+            ],
+        )
+        self.assertIn("superpowers@superpowers-marketplace is installed at local scope for /work/yt", result.stdout)
+        remaining = {(p["id"], p["scope"]) for p in self.read_state()["claude_plugins"]}
+        self.assertEqual(
+            remaining,
+            {
+                ("superpowers@superpowers-marketplace", "local"),
+                ("safety-net@cc-marketplace", "user"),
+                (PLUGIN_ID, "user"),
+            },
+        )
+
+    def test_claude_version_mismatch_fails(self) -> None:
+        self.update_state(plugin_version="0.0.1")
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("expected 1.0.0", result.stderr)
+        self.assertIn("last completed phase: checkout", result.stderr)
 
 
 if __name__ == "__main__":
