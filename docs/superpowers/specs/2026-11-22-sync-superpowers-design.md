@@ -94,6 +94,10 @@ The script runs every check before it changes the working tree, a plugin, or a l
 
 - `git -C <checkout-dir> checkout --detach <tag>`.
 
+### Phase order
+
+`main` runs the phases in this order: Phase 1, Phase 2, Phase 3 (Claude Code), Phase 5 (Links), Phase 4 (Codex), Phase 6. Links run before the Codex removal. A failed Codex removal then leaves at worst a duplicate in Codex, and Cursor and Codex still get the links.
+
 ### Phase 3: Claude Code
 
 Read state with `claude plugin marketplace list --json` and `claude plugin list --json`.
@@ -135,7 +139,7 @@ Print:
 
 - the tag
 - the Claude plugin id, scope, and version
-- the Claude and Codex plugins removed
+- the Claude and Codex plugins removed, as action lines printed during the run
 - the links created, updated, and pruned
 - every warning
 - a reminder to restart Claude Code, Codex, and Cursor
