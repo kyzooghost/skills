@@ -219,9 +219,8 @@ fi
 
 Report status `CONDITIONAL` when any of these are true:
 
-- CI is not green on the current head.
-- Differential review is neither clean nor `NOT_APPLICABLE`.
-- An AI-resolvable finding remains.
+- CI is not green on the current head. If Stage 5 stopped at an approval gate, report it as "awaiting CI approval".
+- An AI-resolvable finding was not applied.
 - A private decision entry has `Status: OPEN`.
 
 `CONDITIONAL` changes the report. It does not return the PR to draft.
@@ -231,7 +230,9 @@ Print:
 - PR URL, base, head, and readiness state.
 - Implementation and CI commits.
 - Differential-review fix commits.
-- Differential-review status or `NOT_APPLICABLE` reason.
+- Stage 4 status: `CLEAN`, `ADDRESSED`, or the `NOT_APPLICABLE` reason. State that the differential-review fix batch was not re-reviewed.
+- Every unapplied AI-resolvable finding.
+- Every pending approval-gated check, with its `name`, `workflow`, and `link`.
 - Exact private report and decision-ledger paths.
 - Every unresolved human decision.
 
@@ -242,8 +243,8 @@ Retain the worktree while any private decision remains open. Never invoke branch
 Stop and report actionable context for:
 
 - Missing or invalid plan.
-- Missing required model input.
-- Unmapped or unavailable selected model.
+- Missing `IMPLEMENTOR_MODEL`, `REVIEWER_MODEL`, or `DIFF_REVIEWER_MODEL`.
+- Unmapped or unavailable selected model, for any of the three inputs.
 - Missing Git `origin`.
 - Ambiguous existing branch, worktree, or PR.
 - Isolation or baseline-test failure.
@@ -251,7 +252,7 @@ Stop and report actionable context for:
 - PR creation failure, or failure to mark the PR ready.
 - Missing CI checks.
 - CI 3-round no-progress limit.
-- Differential-review 3-round no-progress limit.
+- CI awaiting manual approval after all automatic checks pass. The PR stays ready and the report is `CONDITIONAL`.
 - Failure to keep security artifacts private.
 
 All other local, reversible, AI-resolvable implementation choices are covered by standing authorization.
