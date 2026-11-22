@@ -64,6 +64,8 @@ class SyncCommandTest(unittest.TestCase):
             repo_root = (root / "repo").resolve()
             commands_dir = repo_root / "commands"
             skill_dir = repo_root / "skills" / "demo-command"
+            claude_commands = root / "claude" / "commands"
+            agents_commands = root / "agents" / "commands"
             codex_skills = root / "codex" / "skills"
             commands_dir.mkdir(parents=True)
             skill_dir.mkdir(parents=True)
@@ -88,6 +90,10 @@ class SyncCommandTest(unittest.TestCase):
                     "demo-command",
                     "--repo-root",
                     str(repo_root),
+                    "--claude-commands-dir",
+                    str(claude_commands),
+                    "--agents-commands-dir",
+                    str(agents_commands),
                     "--codex-skills-dir",
                     str(codex_skills),
                 ],
