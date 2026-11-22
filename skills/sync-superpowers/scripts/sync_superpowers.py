@@ -26,6 +26,10 @@ DEFAULT_CHECKOUT_DIR = Path.home() / ".local" / "share" / "superpowers"
 DEFAULT_AGENTS_SKILLS_DIR = Path.home() / ".agents" / SKILLS_DIR
 REQUIRED_TOOLS = ("git", "claude", "codex")
 
+# Cursor reads all of these roots, and Codex reads ~/.codex/skills, so a
+# superpowers skill in one of them appears twice.
+DUPLICATE_SKILL_ROOTS = (".claude", ".codex", ".cursor")
+
 
 class SyncError(Exception):
     """A failure that stops the run with a message for the user."""
@@ -138,6 +142,13 @@ def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
         git(checkout_dir, "checkout", "--quiet", "--detach", f"refs/tags/{tag}")
 
 
+def link_target(link: Path) -> Path:
+    target = Path(os.readlink(link))
+    if not target.is_absolute():
+        target = link.parent / target
+    return Path(os.path.normpath(target))
+
+
 def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], report: Report) -> LinkChanges:
     skills_root = checkout_dir / SKILLS_DIR
     changes = LinkChanges()
@@ -145,7 +156,7 @@ def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], re
         link = agents_dir / name
         target = skills_root / name
         if link.is_symlink():
-            if Path(os.readlink(link)) == target:
+            if link_target(link) == target:
                 continue
             report.action(f"update link {link} -> {target}")
             changes.updated.append(name)
@@ -158,7 +169,29 @@ def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], re
             if not report.dry_run:
                 link.parent.mkdir(parents=True, exist_ok=True)
                 link.symlink_to(target, target_is_directory=True)
+
+    # Only links into our checkout are ours to prune. Leave every other entry alone.
+    existing = sorted(agents_dir.iterdir()) if agents_dir.is_dir() else []
+    for link in existing:
+        if link.name in skills or not link.is_symlink():
+            continue
+        if link_target(link).parent == skills_root:
+            report.action(f"remove link {link}")
+            changes.pruned.append(link.name)
+            if not report.dry_run:
+                link.unlink()
     return changes
+
+
+def warn_duplicates(skills: tuple[str, ...], report: Report) -> None:
+    for root in DUPLICATE_SKILL_ROOTS:
+        skills_dir = Path.home() / root / SKILLS_DIR
+        for name in skills:
+            path = skills_dir / name
+            if os.path.lexists(path):
+                report.warn(
+                    f"{path} duplicates superpowers skill {name}; remove it so each tool lists the skill once"
+                )
 
 
 def print_summary(release: Release, links: LinkChanges, report: Report) -> None:
@@ -187,6 +220,7 @@ def main() -> int:
         checkout_tag(checkout_dir, release.tag, report)
         completed = "checkout"
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
+        warn_duplicates(release.skills, report)
         completed = "links"
     except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)

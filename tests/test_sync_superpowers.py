@@ -283,6 +283,55 @@ class SyncSuperpowersTest(unittest.TestCase):
                        "--json", "tagName", "--jq", ".tagName"], self.read_log())
         self.assertEqual(set(self.link_targets()), {"alpha", "gamma"})
 
+    def test_second_run_changes_no_links(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        before = self.link_targets()
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.link_targets(), before)
+        self.assertIn("links: 0 created, 0 updated, 0 removed, 2 total", result.stdout)
+
+    def test_upgrade_adds_new_skills_and_prunes_removed_ones(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        unrelated_target = self.root / "elsewhere"
+        unrelated_target.mkdir()
+        (self.agents / "mine").symlink_to(unrelated_target)
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertEqual(
+            self.link_targets(),
+            {
+                "alpha": self.checkout / "skills" / "alpha",
+                "gamma": self.checkout / "skills" / "gamma",
+                "mine": unrelated_target,
+            },
+        )
+        self.assertIn("links: 1 created, 0 updated, 1 removed, 2 total", result.stdout)
+
+    def test_stale_link_to_other_target_is_replaced(self) -> None:
+        self.agents.mkdir(parents=True)
+        (self.agents / "alpha").symlink_to(self.root / "old-plugin-cache" / "alpha")
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.link_targets()["alpha"], self.checkout / "skills" / "alpha")
+
+    def test_superpowers_skill_in_claude_skills_warns(self) -> None:
+        claude_skills = self.home / ".claude" / "skills"
+        claude_skills.mkdir(parents=True)
+        (claude_skills / "alpha").mkdir()
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        self.assertIn(f"warning: {claude_skills / 'alpha'} duplicates superpowers skill alpha", result.stdout)
+        self.assertTrue((claude_skills / "alpha").is_dir())
+
 
 if __name__ == "__main__":
     unittest.main()
