@@ -1,13 +1,13 @@
 ---
 name: ship-from-plan
-description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green pull request marked ready for review, with explicitly selected implementer and reviewer models.
+description: Use when the user provides a completed implementation plan and wants one continuous isolated execution through a reviewed, CI-green pull request marked ready for review, with explicitly selected implementer, reviewer, and differential-reviewer models.
 ---
 
 # Ship From Plan
 
 ## Overview
 
-Execute one completed implementation plan through isolation, implementation, ready PR creation, CI convergence, and differential-review convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
+Execute one completed implementation plan through isolation, implementation, ready PR creation, a single differential review, and CI convergence. Delegate each stage to its owning workflow while this skill owns authorization, transitions, stop conditions, private artifacts, and final readiness.
 
 Invocation grants standing authorization for all AI-resolvable edits, commits, and pushes. Do not pause at nested routine approval gates. Human authority is still required for product, protocol, security-boundary, irreversible-data, and external-compatibility decisions.
 
@@ -20,6 +20,7 @@ Required:
 - `PLAN_PATH`: repository-relative path to a completed implementation plan.
 - `IMPLEMENTOR_MODEL`: friendly name from `references/model-map.md`.
 - `REVIEWER_MODEL`: friendly name from `references/model-map.md`.
+- `DIFF_REVIEWER_MODEL`: friendly name from `references/model-map.md`. Used only by the Stage 4 differential-review subagent.
 
 Optional:
 
@@ -34,7 +35,7 @@ If a required input is missing, ask for it before starting Stage 1. Model select
 1. Read `PLAN_PATH` once. Require a writing-plans header and checkbox tasks. Stop if the file is missing or is not an implementation plan.
 2. Read `references/model-map.md`.
 3. Detect the active environment from runtime agent capabilities.
-4. Resolve both friendly model names and confirm they are dispatchable. If either is unavailable, list available identifiers and ask the user to choose; never substitute.
+4. Resolve all three friendly model names and confirm they are dispatchable. If any is unavailable, list available identifiers and ask the user to choose; never substitute.
 5. Require a Git repository with an `origin` remote.
 6. Derive `BRANCH_NAME` from the plan stem when omitted.
 7. Detect an existing branch, worktree, or PR using the intended branch name. V1 does not resume across sessions. If ownership cannot be proven for this invocation, stop and report the existing worktree, branch, PR URL, and observable head commit. Do not adopt or duplicate them.
