@@ -106,10 +106,18 @@ def resolve_tag(version: str | None) -> str:
 
 def require_clean_checkout(checkout_dir: Path, repo_url: str) -> None:
     if not (checkout_dir / ".git").exists():
-        raise SyncError(f"{checkout_dir} exists but is not a git checkout")
-    origin = git(checkout_dir, "remote", "get-url", "origin").strip()
+        raise SyncError(f"{checkout_dir} exists but is not a git checkout; move it or pass another --checkout-dir")
+    # Read the stored URL. `git remote get-url` applies url.<base>.insteadOf
+    # rewrites, so a user's HTTPS-to-SSH rewrite would look like a wrong origin.
+    try:
+        origin = git(checkout_dir, "config", "--get", "remote.origin.url").strip()
+    except SyncError:
+        raise SyncError(f"{checkout_dir} has no origin remote; move it or pass another --checkout-dir") from None
     if origin != repo_url:
-        raise SyncError(f"{checkout_dir} origin is {origin}, expected {repo_url}")
+        raise SyncError(
+            f"{checkout_dir} origin is {origin}, expected {repo_url}; "
+            "pass the same --repo-url as the first run, or another --checkout-dir"
+        )
     if git(checkout_dir, "status", "--porcelain", "--untracked-files=all").strip():
         raise SyncError(f"{checkout_dir} has local changes; commit, move, or discard them first")
 

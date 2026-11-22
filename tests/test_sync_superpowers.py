@@ -387,6 +387,26 @@ class SyncSuperpowersTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("origin is https://example.com/other.git", result.stderr)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
+
+    def test_origin_check_ignores_url_rewrites(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        alias = self.root / "upstream-alias"
+        alias.symlink_to(self.upstream)
+        git(self.checkout, "config", f"url.{alias}.insteadOf", str(self.upstream))
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.checkout_tag(), "v1.1.0")
+
+    def test_non_git_checkout_dir_is_refused(self) -> None:
+        self.checkout.mkdir()
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("exists but is not a git checkout", result.stderr)
 
     def test_real_directory_in_agents_dir_is_refused(self) -> None:
         (self.agents / "alpha").mkdir(parents=True)
