@@ -109,36 +109,15 @@ Stop if creation fails or the PR cannot be marked ready. Do not run `gh pr ready
 
 If `/create-pr` changed `HEAD`, run another whole-branch review with `REVIEWER_MODEL`, resolve every AI-owned finding, and push the reviewed head before Stage 4.
 
-## Stage 4: Converge CI
+## Stage 4: Differential Review and Triage
 
-Wait for every check on the current PR head to reach a terminal state. Polling while checks run does not count as a fix round.
-
-If all checks pass, continue to Stage 5.
-
-If no checks exist, stop because readiness cannot be established.
-
-For a terminal failing head:
-
-1. Invoke `/fix-ci` for the PR.
-2. Analyze all failures before editing.
-3. Treat this invocation as standing authorization for every AI-resolvable fix and the resulting commit.
-4. Skip nested per-fix and commit approval prompts.
-5. Apply all AI-resolvable fixes, commit with `fix(ci): resolve CI failures`, and push.
-6. Wait for checks on the new head to finish.
-
-If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
-
-Track the number of failed checks after every completed fix round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
-
-Never count polling calls as rounds. Never claim green while checks are missing, pending, skipped without an accepted policy, failed, cancelled, or timed out.
-
-## Stage 5: Differential Review and Triage
+Run one differential review. Do not repeat it after fixes.
 
 Apply the `differential-review` applicability gate first.
 
-If the change is documentation-only, formatting-only, or otherwise explicitly excluded, record Stage 5 as `NOT_APPLICABLE` with the exact reason and retain the Stage 2 final-review result.
+If the change is documentation-only, formatting-only, or otherwise explicitly excluded, record Stage 4 as `NOT_APPLICABLE` with the exact reason, retain the Stage 2 final-review result, and continue to Stage 5.
 
-For applicable changes, dispatch a reviewer subagent using `REVIEWER_MODEL` and require it to read and follow `differential-review`.
+For applicable changes, dispatch one reviewer subagent using `DIFF_REVIEWER_MODEL` and require it to read and follow `differential-review` against the current PR head.
 
 Create private artifact storage:
 
@@ -149,11 +128,11 @@ ARTIFACT_DIR="$(git rev-parse --git-path ship-from-plan)/$PLAN_STEM"
 mkdir -p "$ARTIFACT_DIR"
 ```
 
-Move each full differential-review report into `ARTIFACT_DIR` before staging or pushing anything. Never stage, commit, publish, or paste the full report into the PR.
+Move the full differential-review report into `ARTIFACT_DIR` before staging or pushing anything. Never stage, commit, publish, or paste the full report into the PR.
 
 Triage every finding:
 
-- `AI_RESOLVABLE`: the correct fix does not require product, protocol, security-boundary, irreversible-data, or external-compatibility authority. Include it in the round's fix batch. Size, file count, and complexity do not change this classification.
+- `AI_RESOLVABLE`: the correct fix does not require product, protocol, security-boundary, irreversible-data, or external-compatibility authority. Include it in the fix batch. Size, file count, and complexity do not change this classification.
 - `HUMAN_DECISION`: the fix requires one of those authorities. Append it to `$ARTIFACT_DIR/decisions.md` and continue triaging the remaining findings.
 
 Use this exact decision entry:
@@ -172,15 +151,60 @@ Use this exact decision entry:
 After triage:
 
 1. Apply all `AI_RESOLVABLE` findings as one batch.
-2. Run affected tests.
-3. Commit with `fix(review): address differential findings`.
-4. Push.
-5. Return to Stage 4 until CI is green on the new head.
-6. Run a fresh full differential review against the updated head.
+2. Run affected tests. If a fix cannot pass affected tests, remove that fix from the batch and record its finding as unapplied.
+3. If the batch is not empty, commit with `fix(review): address differential findings` and push.
+4. Continue to Stage 5.
 
-Repeat until no AI-resolvable finding remains. Stop after 3 consecutive full review rounds that do not reduce the unresolved AI-resolvable finding count.
+Do not run a second differential review. Affected tests and Stage 5 CI are the only checks on the fix batch.
+
+Record the Stage 4 status:
+
+- `CLEAN`: the review reported no findings.
+- `ADDRESSED`: the review reported findings and the fix batch is complete. Report every unapplied AI-resolvable finding separately.
+- `NOT_APPLICABLE`: the applicability gate excluded the change.
 
 Human decisions do not stop triage of later findings. An open decision does not return the PR to draft. The PR stays ready.
+
+## Stage 5: Converge CI
+
+Read the checks on the current PR head:
+
+```bash
+set -euo pipefail
+gh pr checks "$PR_NUMBER" --json name,state,bucket,link,workflow
+```
+
+With `--json`, `gh pr checks` exits 0 even when checks fail or are pending. A nonzero exit means the PR has no checks or the command failed. If no checks exist, stop because readiness cannot be established. For any other error, stop and report it.
+
+Classify each check by its `state`, not its `bucket`. `gh` puts `ACTION_REQUIRED` in the `fail` bucket, so a bucket-only reading treats an approval gate as a failure.
+
+- Approval-gated: `state` is `WAITING` or `ACTION_REQUIRED`. The check waits for a human, such as an environment review or a workflow-run approval.
+- Automatic: every other check.
+
+Wait until every automatic check is terminal, which means its `bucket` is not `pending`. Polling does not count as a fix round. Jobs that a pending approval blocks may not exist yet. Do not wait for them.
+
+Then act on the result:
+
+| Automatic checks | Approval-gated checks | Action |
+|---|---|---|
+| One or more failed, cancelled, or timed out | Any | Run a fix round. |
+| All passed | None pending | CI is green. Continue to Final Readiness. |
+| All passed | One or more pending | Stop. Report each gated check `name`, `workflow`, and `link`. |
+
+A fix round:
+
+1. Invoke `/fix-ci` for the PR.
+2. Analyze all failures before editing.
+3. Treat this invocation as standing authorization for every AI-resolvable fix and the resulting commit.
+4. Skip nested per-fix and commit approval prompts.
+5. Apply all AI-resolvable fixes, commit with `fix(ci): resolve CI failures`, and push.
+6. Read and classify the checks on the new head again.
+
+If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
+
+Track the number of failed automatic checks after every completed fix round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
+
+Never count polling calls as rounds. Never claim green while an automatic check is missing, pending, skipped without an accepted policy, failed, cancelled, or timed out, or while an approval-gated check is pending.
 
 ## Final Readiness
 
