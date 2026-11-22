@@ -367,5 +367,52 @@ class SyncSuperpowersTest(unittest.TestCase):
             self.assertTrue((skills_dir / "alpha").is_dir())
 
 
+    def test_dirty_checkout_is_refused(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        (self.checkout / "local-edit.txt").write_text("edit\n", encoding="utf-8")
+        self.clear_log()
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("has local changes", result.stderr)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
+        self.assertEqual(self.tool_calls("claude", "codex"), [])
+
+    def test_wrong_origin_is_refused(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        git(self.checkout, "remote", "set-url", "origin", "https://example.com/other.git")
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("origin is https://example.com/other.git", result.stderr)
+
+    def test_real_directory_in_agents_dir_is_refused(self) -> None:
+        (self.agents / "alpha").mkdir(parents=True)
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("is a real file or directory", result.stderr)
+        self.assertFalse((self.agents / "alpha").is_symlink())
+        self.assertFalse((self.agents / "beta").exists())
+        self.assertEqual(self.tool_calls("claude", "codex"), [])
+
+    def test_unknown_tag_is_refused(self) -> None:
+        result = self.run_sync("--version", "v9.9.9")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("tag v9.9.9 not found", result.stderr)
+
+    def test_failed_first_run_does_not_block_next_run(self) -> None:
+        self.assertEqual(self.run_sync("--version", "v9.9.9").returncode, 1)
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
+
+
 if __name__ == "__main__":
     unittest.main()

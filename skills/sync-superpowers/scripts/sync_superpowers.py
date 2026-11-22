@@ -104,8 +104,27 @@ def resolve_tag(version: str | None) -> str:
     return tag
 
 
+def require_clean_checkout(checkout_dir: Path, repo_url: str) -> None:
+    if not (checkout_dir / ".git").exists():
+        raise SyncError(f"{checkout_dir} exists but is not a git checkout")
+    origin = git(checkout_dir, "remote", "get-url", "origin").strip()
+    if origin != repo_url:
+        raise SyncError(f"{checkout_dir} origin is {origin}, expected {repo_url}")
+    if git(checkout_dir, "status", "--porcelain", "--untracked-files=all").strip():
+        raise SyncError(f"{checkout_dir} has local changes; commit, move, or discard them first")
+
+
+def require_link_slots(agents_dir: Path, skills: tuple[str, ...]) -> None:
+    for name in skills:
+        path = agents_dir / name
+        if os.path.lexists(path) and not path.is_symlink():
+            raise SyncError(f"{path} is a real file or directory; move it, then run again")
+
+
 def prepare_repo(checkout_dir: Path, repo_url: str) -> Path:
-    if not os.path.lexists(checkout_dir):
+    if os.path.lexists(checkout_dir):
+        require_clean_checkout(checkout_dir, repo_url)
+    else:
         checkout_dir.parent.mkdir(parents=True, exist_ok=True)
         run(["git", "clone", "--quiet", "--", repo_url, str(checkout_dir)])
     git(checkout_dir, "fetch", "--quiet", "--tags", "--force", "origin")
@@ -125,7 +144,7 @@ def list_tag_skills(repo_dir: Path, tag: str) -> tuple[str, ...]:
     return tuple(names)
 
 
-def preflight(version: str | None, repo_url: str, checkout_dir: Path) -> Release:
+def preflight(version: str | None, repo_url: str, checkout_dir: Path, agents_dir: Path) -> Release:
     require_tools(need_gh=version is None)
     tag = resolve_tag(version)
     repo_dir = prepare_repo(checkout_dir, repo_url)
@@ -133,7 +152,9 @@ def preflight(version: str | None, repo_url: str, checkout_dir: Path) -> Release
         git(repo_dir, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}")
     except SyncError:
         raise SyncError(f"tag {tag} not found in {repo_url}") from None
-    return Release(tag=tag, skills=list_tag_skills(repo_dir, tag))
+    skills = list_tag_skills(repo_dir, tag)
+    require_link_slots(agents_dir, skills)
+    return Release(tag=tag, skills=skills)
 
 
 def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
@@ -219,7 +240,7 @@ def main() -> int:
     report = Report(dry_run=args.dry_run)
     completed = None
     try:
-        release = preflight(args.version, args.repo_url, checkout_dir)
+        release = preflight(args.version, args.repo_url, checkout_dir, agents_dir)
         completed = "preflight"
         checkout_tag(checkout_dir, release.tag, report)
         completed = "checkout"
