@@ -67,7 +67,7 @@ Preflight errors stop the run before any plugin or link changes. A later error p
 ## Warnings
 
 - `Claude plugin ... is installed at <scope> scope for <project>`: a local-scope or project-scope install that the script does not change. Ask the user whether to uninstall it with `claude plugin uninstall <id> --scope <scope>`, run in that project.
-- `... duplicates superpowers skill <name>`: a copy in `~/.claude/skills`, `~/.codex/skills`, or `~/.cursor/skills`. Cursor reads all three, so the skill appears twice. Ask the user before you remove it.
+- `... duplicates superpowers skill <name>`: a copy in `~/.claude/skills`, `~/.codex/skills`, or `~/.cursor/skills`. Claude Code lists a `~/.claude/skills` copy beside the plugin skill, and Codex lists a `~/.codex/skills` copy beside the `~/.agents/skills` link. Ask the user before you remove it.
 
 ## Options
 
