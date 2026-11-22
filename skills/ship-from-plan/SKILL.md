@@ -251,8 +251,9 @@ Stop and report actionable context for:
 - Blocker requiring another model or human authority.
 - PR creation failure, or failure to mark the PR ready.
 - Missing CI checks.
+- Any other `gh pr checks` error.
 - CI 3-round no-progress limit.
-- CI awaiting manual approval after all automatic checks pass. The PR stays ready and the report is `CONDITIONAL`.
+- CI awaiting manual approval after all automatic checks pass. Continue to Final Readiness. The PR stays ready and the report is `CONDITIONAL`.
 - Failure to keep security artifacts private.
 
 All other local, reversible, AI-resolvable implementation choices are covered by standing authorization.

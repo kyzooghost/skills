@@ -13,7 +13,7 @@ Resolve the user's required friendly model inputs against the active agent envir
 
 ## Claude Code mappings
 
-Claude Code dispatches through the Agent tool: `model` takes an alias and `effort` takes a level. Alias versions are confirmed by the user, not detected.
+Claude Code dispatches through the Agent tool: `model` takes an alias and `effort` takes a level. Alias versions are confirmed by the user, not detected. Do not dispatch with `subagent_type: "fork"`, because a fork ignores `model` and `effort` and runs on the parent's model.
 
 - `Sonnet 5.5 medium` -> Agent `model` `sonnet`, `effort` `medium`
 - `Sonnet 5.5 high` -> Agent `model` `sonnet`, `effort` `high`
