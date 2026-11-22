@@ -23,6 +23,7 @@ GIT_TEST_CONFIG = (
     "-c", "init.defaultBranch=main",
 )
 FAKE_TOOLS = ("claude", "codex", "gh")
+GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 
 # Fake claude, codex, and gh. Each call is logged to FAKE_LOG. State lives in
 # FAKE_STATE so install, uninstall, and remove calls persist between runs.
@@ -42,6 +43,9 @@ command = " ".join([tool, *args])
 if state.get("fail") and command.startswith(state["fail"]):
     sys.stderr.write("simulated failure\n")
     sys.exit(1)
+if "list" in args and "--json" not in args:
+    sys.stderr.write("fake: list commands need --json\n")
+    sys.exit(2)
 
 
 def save():
@@ -115,10 +119,18 @@ elif tool == "codex":
 '''
 
 
+def isolated_env(**extra: str) -> dict[str, str]:
+    """Environment without the developer's git config or inherited repository variables."""
+    env = {key: value for key, value in os.environ.items() if key not in GIT_REPO_VARS}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", **extra)
+    return env
+
+
 def git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *GIT_TEST_CONFIG, *args],
         cwd=cwd,
+        env=isolated_env(),
         check=True,
         capture_output=True,
         text=True,
@@ -215,13 +227,12 @@ class SyncSuperpowersTest(unittest.TestCase):
         return [call for call in self.read_log() if call[0] in tools]
 
     def run_sync(self, *extra: str) -> subprocess.CompletedProcess[str]:
-        env = {
-            **os.environ,
-            "HOME": str(self.home),
-            "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
-            "FAKE_STATE": str(self.state_path),
-            "FAKE_LOG": str(self.log_path),
-        }
+        env = isolated_env(
+            HOME=str(self.home),
+            PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+            FAKE_STATE=str(self.state_path),
+            FAKE_LOG=str(self.log_path),
+        )
         return subprocess.run(
             [
                 sys.executable,

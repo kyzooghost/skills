@@ -41,7 +41,6 @@ class Report:
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
-        print(f"warning: {message}")
 
 
 @dataclass(frozen=True)
@@ -104,13 +103,14 @@ def resolve_tag(version: str | None) -> str:
 def prepare_repo(checkout_dir: Path, repo_url: str) -> Path:
     if not os.path.lexists(checkout_dir):
         checkout_dir.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--quiet", "--no-checkout", repo_url, str(checkout_dir)])
+        run(["git", "clone", "--quiet", "--", repo_url, str(checkout_dir)])
     git(checkout_dir, "fetch", "--quiet", "--tags", "--force", "origin")
     return checkout_dir
 
 
 def list_tag_skills(repo_dir: Path, tag: str) -> tuple[str, ...]:
-    paths = git(repo_dir, "ls-tree", "-r", "--name-only", tag, "--", SKILLS_DIR).splitlines()
+    listing = git(repo_dir, "ls-tree", "-r", "-z", "--name-only", f"refs/tags/{tag}", "--", SKILLS_DIR)
+    paths = listing.split("\0")
     names = sorted(
         parts[1]
         for parts in (path.split("/") for path in paths)
@@ -135,7 +135,7 @@ def preflight(version: str | None, repo_url: str, checkout_dir: Path) -> Release
 def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
     report.action(f"check out {tag} in {checkout_dir}")
     if not report.dry_run:
-        git(checkout_dir, "checkout", "--quiet", "--detach", tag)
+        git(checkout_dir, "checkout", "--quiet", "--detach", f"refs/tags/{tag}")
 
 
 def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], report: Report) -> LinkChanges:
@@ -188,7 +188,7 @@ def main() -> int:
         completed = "checkout"
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         completed = "links"
-    except SyncError as error:
+    except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
