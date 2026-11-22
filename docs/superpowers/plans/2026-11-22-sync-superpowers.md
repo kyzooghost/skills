@@ -797,6 +797,26 @@ Add these methods to `SyncSuperpowersTest`:
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("origin is https://example.com/other.git", result.stderr)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
+
+    def test_origin_check_ignores_url_rewrites(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        alias = self.root / "upstream-alias"
+        alias.symlink_to(self.upstream)
+        git(self.checkout, "config", f"url.{alias}.insteadOf", str(self.upstream))
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.checkout_tag(), "v1.1.0")
+
+    def test_non_git_checkout_dir_is_refused(self) -> None:
+        self.checkout.mkdir()
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("exists but is not a git checkout", result.stderr)
 
     def test_real_directory_in_agents_dir_is_refused(self) -> None:
         (self.agents / "alpha").mkdir(parents=True)
@@ -827,7 +847,7 @@ Add these methods to `SyncSuperpowersTest`:
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: `test_dirty_checkout_is_refused`, `test_wrong_origin_is_refused`, and `test_real_directory_in_agents_dir_is_refused` FAIL. `test_unknown_tag_is_refused` and `test_failed_first_run_does_not_block_next_run` pass.
+Expected: `test_dirty_checkout_is_refused`, `test_wrong_origin_is_refused`, `test_non_git_checkout_dir_is_refused`, and `test_real_directory_in_agents_dir_is_refused` FAIL. `test_unknown_tag_is_refused`, `test_failed_first_run_does_not_block_next_run`, and `test_origin_check_ignores_url_rewrites` pass. The rewrite test passes only because `require_clean_checkout` does not exist yet. It guards the origin check added in Step 3.
 
 - [ ] **Step 3: Add the checks**
 
@@ -836,10 +856,18 @@ In `sync_superpowers.py`, add these functions after `resolve_tag`:
 ```python
 def require_clean_checkout(checkout_dir: Path, repo_url: str) -> None:
     if not (checkout_dir / ".git").exists():
-        raise SyncError(f"{checkout_dir} exists but is not a git checkout")
-    origin = git(checkout_dir, "remote", "get-url", "origin").strip()
+        raise SyncError(f"{checkout_dir} exists but is not a git checkout; move it or pass another --checkout-dir")
+    # Read the stored URL. `git remote get-url` applies url.<base>.insteadOf
+    # rewrites, so a user's HTTPS-to-SSH rewrite would look like a wrong origin.
+    try:
+        origin = git(checkout_dir, "config", "--get", "remote.origin.url").strip()
+    except SyncError:
+        raise SyncError(f"{checkout_dir} has no origin remote; move it or pass another --checkout-dir") from None
     if origin != repo_url:
-        raise SyncError(f"{checkout_dir} origin is {origin}, expected {repo_url}")
+        raise SyncError(
+            f"{checkout_dir} origin is {origin}, expected {repo_url}; "
+            "pass the same --repo-url as the first run, or another --checkout-dir"
+        )
     if git(checkout_dir, "status", "--porcelain", "--untracked-files=all").strip():
         raise SyncError(f"{checkout_dir} has local changes; commit, move, or discard them first")
 
@@ -889,7 +917,7 @@ In `main`, replace `release = preflight(args.version, args.repo_url, checkout_di
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 13 tests, `OK`.
+Expected: 15 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1162,7 +1190,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 18 tests, `OK`.
+Expected: 20 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1267,7 +1295,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 19 tests, `OK`.
+Expected: 21 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1424,7 +1452,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 21 tests, `OK`.
+Expected: 23 tests, `OK`.
 
 Also run the full suite to check nothing else broke:
 Run: `python3 -m unittest discover -s tests -v`
@@ -1506,7 +1534,7 @@ The script checks everything before it changes anything:
 |---|---|
 | `missing required tools on PATH` | Install the named tool. `gh` is needed only without `--version`. |
 | `has local changes` | The checkout was edited. Ask the user before you discard anything there. |
-| `origin is ..., expected ...` | The checkout belongs to another repo. Move it, or pass `--checkout-dir`. |
+| `origin is ..., expected ...` | The checkout was cloned from another URL. Pass the same `--repo-url` as the first run, or pass another `--checkout-dir`. |
 | `is a real file or directory` | A real skill folder in `~/.agents/skills` has a superpowers name. Ask the user before you move it. |
 | `tag ... not found` | Check the tag with `gh release list -R obra/superpowers`. |
 | `command failed: ...` | Read the stderr shown below the command. Fix the cause and run the script again. Every phase is safe to repeat. |
