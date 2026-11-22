@@ -320,17 +320,36 @@ class SyncSuperpowersTest(unittest.TestCase):
 
         self.assert_ok(result)
         self.assertEqual(self.link_targets()["alpha"], self.checkout / "skills" / "alpha")
+        self.assertIn("links: 1 created, 1 updated, 0 removed, 2 total", result.stdout)
 
-    def test_superpowers_skill_in_claude_skills_warns(self) -> None:
-        claude_skills = self.home / ".claude" / "skills"
-        claude_skills.mkdir(parents=True)
-        (claude_skills / "alpha").mkdir()
+    def test_pruning_only_removes_links_into_the_checkout(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        other_skill = self.root / "other" / "skills" / "beta-other"
+        other_skill.mkdir(parents=True)
+        (self.agents / "beta-other").symlink_to(other_skill)
+        (self.agents / "real-dir").mkdir()
+        for name in ("alpha", "beta"):
+            (self.agents / name).unlink()
+            (self.agents / name).symlink_to(os.path.relpath(self.checkout / "skills" / name, self.agents))
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertEqual(set(self.link_targets()), {"alpha", "gamma", "beta-other"})
+        self.assertTrue((self.agents / "real-dir").is_dir())
+        self.assertIn("links: 1 created, 0 updated, 1 removed, 2 total", result.stdout)
+
+    def test_superpowers_skill_in_other_skill_roots_warns(self) -> None:
+        roots = [self.home / root / "skills" for root in (".claude", ".codex", ".cursor")]
+        for skills_dir in roots:
+            (skills_dir / "alpha").mkdir(parents=True)
 
         result = self.run_sync("--version", "v1.0.0")
 
         self.assert_ok(result)
-        self.assertIn(f"warning: {claude_skills / 'alpha'} duplicates superpowers skill alpha", result.stdout)
-        self.assertTrue((claude_skills / "alpha").is_dir())
+        for skills_dir in roots:
+            self.assertIn(f"warning: {skills_dir / 'alpha'} duplicates superpowers skill alpha", result.stdout)
+            self.assertTrue((skills_dir / "alpha").is_dir())
 
 
 if __name__ == "__main__":

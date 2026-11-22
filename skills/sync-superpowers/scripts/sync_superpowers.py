@@ -143,10 +143,14 @@ def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
 
 
 def link_target(link: Path) -> Path:
+    """Return the absolute target of a symlink, without following the final component."""
     target = Path(os.readlink(link))
     if not target.is_absolute():
         target = link.parent / target
-    return Path(os.path.normpath(target))
+    # The OS resolves ".." through the real parent directory, so resolve the
+    # parent through the file system, not as text. The skill directory itself
+    # may already be gone after a tag change, so do not resolve the last part.
+    return Path(os.path.realpath(target.parent)) / target.name
 
 
 def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], report: Report) -> LinkChanges:
