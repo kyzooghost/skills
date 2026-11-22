@@ -380,7 +380,6 @@ class SyncSuperpowersTest(unittest.TestCase):
             self.assertIn(f"warning: {skills_dir / 'alpha'} duplicates superpowers skill alpha", result.stdout)
             self.assertTrue((skills_dir / "alpha").is_dir())
 
-
     def test_dirty_checkout_is_refused(self) -> None:
         self.assert_ok(self.run_sync("--version", "v1.0.0"))
         (self.checkout / "local-edit.txt").write_text("edit\n", encoding="utf-8")
@@ -447,7 +446,6 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assert_ok(result)
         self.assertEqual(self.checkout_tag(), "v1.0.0")
 
-
     def test_first_run_adds_marketplace_and_installs_plugin(self) -> None:
         result = self.run_sync("--version", "v1.0.0")
 
@@ -457,7 +455,7 @@ class SyncSuperpowersTest(unittest.TestCase):
             claude_writes,
             [
                 ["claude", "plugin", "marketplace", "add", str(self.checkout)],
-                ["claude", "plugin", "install", PLUGIN_ID],
+                ["claude", "plugin", "install", PLUGIN_ID, "--scope", "user"],
             ],
         )
         self.assertIn(f"claude: {PLUGIN_ID} scope=user version=1.0.0", result.stdout)
@@ -474,7 +472,7 @@ class SyncSuperpowersTest(unittest.TestCase):
             claude_writes,
             [
                 ["claude", "plugin", "marketplace", "update", MARKETPLACE],
-                ["claude", "plugin", "update", PLUGIN_ID],
+                ["claude", "plugin", "update", PLUGIN_ID, "--scope", "user"],
             ],
         )
 
@@ -493,7 +491,7 @@ class SyncSuperpowersTest(unittest.TestCase):
             [
                 ["claude", "plugin", "marketplace", "remove", MARKETPLACE],
                 ["claude", "plugin", "marketplace", "add", str(self.checkout)],
-                ["claude", "plugin", "install", PLUGIN_ID],
+                ["claude", "plugin", "install", PLUGIN_ID, "--scope", "user"],
             ],
         )
 
@@ -515,8 +513,8 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertEqual(
             uninstalls,
             [
-                ["claude", "plugin", "uninstall", "superpowers@superpowers-marketplace"],
-                ["claude", "plugin", "uninstall", "superpowers@claude-plugins-official"],
+                ["claude", "plugin", "uninstall", "superpowers@superpowers-marketplace", "--scope", "user"],
+                ["claude", "plugin", "uninstall", "superpowers@claude-plugins-official", "--scope", "user"],
             ],
         )
         self.assertIn("superpowers@superpowers-marketplace is installed at local scope for /work/yt", result.stdout)
@@ -577,6 +575,25 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertEqual([p["pluginId"] for p in state["codex_plugins"]], ["github@openai-curated-remote"])
         self.assertEqual([m["name"] for m in state["codex_marketplaces"]], ["openai-curated"])
 
+    def test_codex_failure_does_not_block_links_or_hide_warnings(self) -> None:
+        self.update_state(
+            claude_plugins=[
+                {"id": "superpowers@superpowers-marketplace", "version": "5.1.0", "scope": "local",
+                 "enabled": True, "projectPath": "/work/yt"},
+            ],
+            codex_plugins=[{"pluginId": "superpowers@superpowers-dev", "name": "superpowers", "installed": True}],
+            fail="codex plugin remove",
+        )
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("last completed phase: links", result.stderr)
+        self.assertEqual(set(self.link_targets()), {"alpha", "beta"})
+        self.assertIn(
+            "warning: Claude plugin superpowers@superpowers-marketplace is installed at local scope for /work/yt",
+            result.stderr,
+        )
 
     def test_dry_run_without_checkout_changes_nothing(self) -> None:
         self.update_state(
@@ -596,7 +613,7 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertIn("would run: codex plugin remove superpowers@superpowers-dev", result.stdout)
         self.assertIn(f"would create link {self.agents / 'alpha'}", result.stdout)
         self.assertIn(f"would clone {self.upstream} into {self.checkout}", result.stdout)
-        self.assertIn("(dry run: nothing changed)", result.stdout)
+        self.assertIn("(dry run)", result.stdout)
 
     def test_dry_run_with_existing_checkout_changes_nothing(self) -> None:
         self.assert_ok(self.run_sync("--version", "v1.0.0"))

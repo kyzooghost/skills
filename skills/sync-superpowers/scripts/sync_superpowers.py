@@ -260,18 +260,18 @@ def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
     installed = not replaced and any(
         p.get("id") == PLUGIN_ID and p.get("scope") == USER_SCOPE for p in plugins
     )
-    run_write(["claude", "plugin", "update" if installed else "install", PLUGIN_ID], report)
+    run_write(
+        ["claude", "plugin", "update" if installed else "install", PLUGIN_ID, "--scope", USER_SCOPE],
+        report,
+    )
 
-    uninstalled: set[str] = set()
     for plugin in plugins:
         plugin_id = plugin.get("id") or ""
         if plugin_id == PLUGIN_ID or plugin_id.split("@")[0] != PLUGIN:
             continue
         scope = plugin.get("scope")
         if scope == USER_SCOPE:
-            if plugin_id not in uninstalled:
-                run_write(["claude", "plugin", "uninstall", plugin_id], report)
-                uninstalled.add(plugin_id)
+            run_write(["claude", "plugin", "uninstall", plugin_id, "--scope", USER_SCOPE], report)
         else:
             project = plugin.get("projectPath") or "an unknown project"
             report.warn(f"Claude plugin {plugin_id} is installed at {scope} scope for {project}; left unchanged")
@@ -367,7 +367,7 @@ def warn_duplicates(skills: tuple[str, ...], report: Report) -> None:
 
 def print_summary(release: Release, claude_plugin: dict | None, links: LinkChanges, report: Report) -> None:
     print()
-    suffix = " (dry run: nothing changed)" if report.dry_run else ""
+    suffix = " (dry run)" if report.dry_run else ""
     print(f"superpowers {release.tag}{suffix}")
     if claude_plugin:
         print(
@@ -386,6 +386,7 @@ def print_summary(release: Release, claude_plugin: dict | None, links: LinkChang
 
 def main() -> int:
     args = parse_args()
+    # Link targets need a canonical checkout path. Agents links are resolved per link in link_target.
     checkout_dir = args.checkout_dir.expanduser().resolve()
     agents_dir = args.agents_skills_dir.expanduser()
     report = Report(dry_run=args.dry_run)
@@ -400,15 +401,18 @@ def main() -> int:
         completed = "checkout"
         claude_plugin = sync_claude(checkout_dir, release.tag, report)
         completed = "claude"
-        sync_codex(report)
-        completed = "codex"
+        # Links run before the Codex removal, so a Codex failure cannot leave Cursor and Codex without superpowers.
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         warn_duplicates(release.skills, report)
         completed = "links"
+        sync_codex(report)
+        completed = "codex"
     except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
+        for warning in report.warnings:
+            print(f"warning: {warning}", file=sys.stderr)
         return 1
     finally:
         for temp_dir in temp_dirs:

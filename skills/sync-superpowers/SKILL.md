@@ -19,6 +19,8 @@ The script keeps a git checkout pinned to a release tag at `~/.local/share/super
 
 The script also removes duplicates: other user-scope `superpowers@*` plugins in Claude Code, and every superpowers plugin in Codex.
 
+Removing the Codex plugin from the `openai-curated-remote` directory may apply to the whole ChatGPT account, not only this machine. Tell the user before the first run.
+
 ## Workflow
 
 1. If the user wants a preview, run a dry run first:
@@ -48,7 +50,7 @@ Use `--version <tag>` to pin or roll back, for example `--version v7.0.1`.
 
 ## Errors
 
-The script checks everything before it changes anything:
+Preflight errors stop the run before any plugin or link changes. A later error prints `last completed phase: <phase>`, and running the script again finishes the update.
 
 | Error | Fix |
 |---|---|
@@ -57,11 +59,14 @@ The script checks everything before it changes anything:
 | `origin is ..., expected ...` | The checkout was cloned from another URL. Pass the same `--repo-url` as the first run, or pass another `--checkout-dir`. |
 | `is a real file or directory` | A real skill folder in `~/.agents/skills` has a superpowers name. Ask the user before you move it. |
 | `tag ... not found` | Check the tag with `gh release list -R obra/superpowers`. |
+| `Claude reports ... disabled` | Run `claude plugin enable superpowers@superpowers-dev`, then run the script again. |
+| `Claude reports ... version ...; expected ...` | Run `claude plugin list --json` and report the output to the user. |
+| `Codex still lists installed superpowers plugins` | Ask the user to remove the named plugin in Codex, then run the script again. |
 | `command failed: ...` | Read the stderr shown below the command. Fix the cause and run the script again. Every phase is safe to repeat. |
 
 ## Warnings
 
-- `Claude plugin ... is installed at local scope for <project>`: a project-level install the script does not change. Ask the user whether to uninstall it from that project with `claude plugin uninstall <id> --scope local`, run in that project.
+- `Claude plugin ... is installed at <scope> scope for <project>`: a local-scope or project-scope install that the script does not change. Ask the user whether to uninstall it with `claude plugin uninstall <id> --scope <scope>`, run in that project.
 - `... duplicates superpowers skill <name>`: a copy in `~/.claude/skills`, `~/.codex/skills`, or `~/.cursor/skills`. Cursor reads all three, so the skill appears twice. Ask the user before you remove it.
 
 ## Options
