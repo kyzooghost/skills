@@ -578,5 +578,36 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertEqual([m["name"] for m in state["codex_marketplaces"]], ["openai-curated"])
 
 
+    def test_dry_run_without_checkout_changes_nothing(self) -> None:
+        self.update_state(
+            codex_plugins=[{"pluginId": "superpowers@superpowers-dev", "name": "superpowers", "installed": True}],
+        )
+        before = self.read_state()
+
+        result = self.run_sync("--version", "v1.0.0", "--dry-run")
+
+        self.assert_ok(result)
+        self.assertFalse(self.checkout.exists())
+        self.assertFalse(self.agents.exists())
+        self.assertEqual(self.read_state(), before)
+        for call in self.tool_calls("claude", "codex"):
+            self.assertIn("list", call)
+        self.assertIn("would run: claude plugin install superpowers@superpowers-dev", result.stdout)
+        self.assertIn("would run: codex plugin remove superpowers@superpowers-dev", result.stdout)
+        self.assertIn(f"would create link {self.agents / 'alpha'}", result.stdout)
+        self.assertIn("(dry run: nothing changed)", result.stdout)
+
+    def test_failed_command_stops_run(self) -> None:
+        self.update_state(fail="claude plugin install")
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("command failed: claude plugin install superpowers@superpowers-dev", result.stderr)
+        self.assertIn("simulated failure", result.stderr)
+        self.assertIn("last completed phase: checkout", result.stderr)
+        self.assertFalse(self.agents.exists())
+
+
 if __name__ == "__main__":
     unittest.main()

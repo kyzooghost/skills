@@ -15,6 +15,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -135,14 +136,25 @@ def require_link_slots(agents_dir: Path, skills: tuple[str, ...]) -> None:
             raise SyncError(f"{path} is a real file or directory; move it, then run again")
 
 
-def prepare_repo(checkout_dir: Path, repo_url: str) -> Path:
+def prepare_repo(checkout_dir: Path, repo_url: str, dry_run: bool, temp_dirs: list[Path]) -> Path:
+    """Return a repository with fresh tags: the checkout, or a temporary clone in a dry run."""
     if os.path.lexists(checkout_dir):
         require_clean_checkout(checkout_dir, repo_url)
+        repo_dir = checkout_dir
     else:
-        checkout_dir.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--quiet", "--", repo_url, str(checkout_dir)])
-    git(checkout_dir, "fetch", "--quiet", "--tags", "--force", "origin")
-    return checkout_dir
+        if dry_run:
+            temp_dir = Path(tempfile.mkdtemp(prefix="sync-superpowers-"))
+            temp_dirs.append(temp_dir)
+            repo_dir = temp_dir / "checkout"
+        else:
+            checkout_dir.parent.mkdir(parents=True, exist_ok=True)
+            repo_dir = checkout_dir
+        # The temporary clone is read only with ls-tree, so it skips the working tree.
+        # The real checkout gets one, so a failed run leaves it clean for the next run.
+        clone_mode = ["--no-checkout"] if dry_run else []
+        run(["git", "clone", "--quiet", *clone_mode, "--", repo_url, str(repo_dir)])
+    git(repo_dir, "fetch", "--quiet", "--tags", "--force", "origin")
+    return repo_dir
 
 
 def list_tag_skills(repo_dir: Path, tag: str) -> tuple[str, ...]:
@@ -158,10 +170,17 @@ def list_tag_skills(repo_dir: Path, tag: str) -> tuple[str, ...]:
     return tuple(names)
 
 
-def preflight(version: str | None, repo_url: str, checkout_dir: Path, agents_dir: Path) -> Release:
+def preflight(
+    version: str | None,
+    repo_url: str,
+    checkout_dir: Path,
+    agents_dir: Path,
+    dry_run: bool,
+    temp_dirs: list[Path],
+) -> Release:
     require_tools(need_gh=version is None)
     tag = resolve_tag(version)
-    repo_dir = prepare_repo(checkout_dir, repo_url)
+    repo_dir = prepare_repo(checkout_dir, repo_url, dry_run, temp_dirs)
     try:
         git(repo_dir, "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}")
     except SyncError:
@@ -366,9 +385,10 @@ def main() -> int:
     checkout_dir = args.checkout_dir.expanduser().resolve()
     agents_dir = args.agents_skills_dir.expanduser()
     report = Report(dry_run=args.dry_run)
+    temp_dirs: list[Path] = []
     completed = None
     try:
-        release = preflight(args.version, args.repo_url, checkout_dir, agents_dir)
+        release = preflight(args.version, args.repo_url, checkout_dir, agents_dir, args.dry_run, temp_dirs)
         completed = "preflight"
         checkout_tag(checkout_dir, release.tag, report)
         completed = "checkout"
@@ -384,6 +404,9 @@ def main() -> int:
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
         return 1
+    finally:
+        for temp_dir in temp_dirs:
+            shutil.rmtree(temp_dir)
     print_summary(release, claude_plugin, links, report)
     return 0
 
