@@ -595,7 +595,22 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertIn("would run: claude plugin install superpowers@superpowers-dev", result.stdout)
         self.assertIn("would run: codex plugin remove superpowers@superpowers-dev", result.stdout)
         self.assertIn(f"would create link {self.agents / 'alpha'}", result.stdout)
+        self.assertIn(f"would clone {self.upstream} into {self.checkout}", result.stdout)
         self.assertIn("(dry run: nothing changed)", result.stdout)
+
+    def test_dry_run_with_existing_checkout_changes_nothing(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        before_links = self.link_targets()
+        before_state = self.read_state()
+
+        result = self.run_sync("--version", "v1.1.0", "--dry-run")
+
+        self.assert_ok(result)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
+        self.assertEqual(self.link_targets(), before_links)
+        self.assertEqual(self.read_state(), before_state)
+        self.assertIn(f"would create link {self.agents / 'gamma'}", result.stdout)
+        self.assertIn(f"would remove link {self.agents / 'beta'}", result.stdout)
 
     def test_failed_command_stops_run(self) -> None:
         self.update_state(fail="claude plugin install")

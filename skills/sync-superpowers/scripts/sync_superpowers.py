@@ -283,11 +283,15 @@ def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
 
 def installed_codex_superpowers() -> list[str]:
     installed = read_json_list(["codex", "plugin", "list", "--json"], key="installed")
-    return [
-        plugin["pluginId"]
-        for plugin in installed
-        if plugin.get("name") == PLUGIN and plugin.get("installed")
-    ]
+    plugin_ids = []
+    for plugin in installed:
+        if plugin.get("name") != PLUGIN or not plugin.get("installed"):
+            continue
+        plugin_id = plugin.get("pluginId")
+        if not plugin_id:
+            raise SyncError(f"Codex lists an installed {PLUGIN} plugin without a pluginId")
+        plugin_ids.append(plugin_id)
+    return plugin_ids
 
 
 def sync_codex(report: Report) -> None:
@@ -390,6 +394,8 @@ def main() -> int:
     try:
         release = preflight(args.version, args.repo_url, checkout_dir, agents_dir, args.dry_run, temp_dirs)
         completed = "preflight"
+        if report.dry_run and not os.path.lexists(checkout_dir):
+            report.action(f"clone {args.repo_url} into {checkout_dir}")
         checkout_tag(checkout_dir, release.tag, report)
         completed = "checkout"
         claude_plugin = sync_claude(checkout_dir, release.tag, report)
@@ -406,7 +412,11 @@ def main() -> int:
         return 1
     finally:
         for temp_dir in temp_dirs:
-            shutil.rmtree(temp_dir)
+            try:
+                shutil.rmtree(temp_dir)
+            except OSError as error:
+                # Do not let a cleanup failure hide the run's real result.
+                print(f"warning: could not remove {temp_dir}: {error}", file=sys.stderr)
     print_summary(release, claude_plugin, links, report)
     return 0
 
