@@ -84,6 +84,7 @@ GIT_TEST_CONFIG = (
     "-c", "init.defaultBranch=main",
 )
 FAKE_TOOLS = ("claude", "codex", "gh")
+GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 
 # Fake claude, codex, and gh. Each call is logged to FAKE_LOG. State lives in
 # FAKE_STATE so install, uninstall, and remove calls persist between runs.
@@ -103,6 +104,9 @@ command = " ".join([tool, *args])
 if state.get("fail") and command.startswith(state["fail"]):
     sys.stderr.write("simulated failure\n")
     sys.exit(1)
+if "list" in args and "--json" not in args:
+    sys.stderr.write("fake: list commands need --json\n")
+    sys.exit(2)
 
 
 def save():
@@ -176,10 +180,18 @@ elif tool == "codex":
 '''
 
 
+def isolated_env(**extra: str) -> dict[str, str]:
+    """Environment without the developer's git config or inherited repository variables."""
+    env = {key: value for key, value in os.environ.items() if key not in GIT_REPO_VARS}
+    env.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1", **extra)
+    return env
+
+
 def git(cwd: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *GIT_TEST_CONFIG, *args],
         cwd=cwd,
+        env=isolated_env(),
         check=True,
         capture_output=True,
         text=True,
@@ -276,13 +288,12 @@ class SyncSuperpowersTest(unittest.TestCase):
         return [call for call in self.read_log() if call[0] in tools]
 
     def run_sync(self, *extra: str) -> subprocess.CompletedProcess[str]:
-        env = {
-            **os.environ,
-            "HOME": str(self.home),
-            "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
-            "FAKE_STATE": str(self.state_path),
-            "FAKE_LOG": str(self.log_path),
-        }
+        env = isolated_env(
+            HOME=str(self.home),
+            PATH=f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+            FAKE_STATE=str(self.state_path),
+            FAKE_LOG=str(self.log_path),
+        )
         return subprocess.run(
             [
                 sys.executable,
@@ -391,7 +402,6 @@ class Report:
 
     def warn(self, message: str) -> None:
         self.warnings.append(message)
-        print(f"warning: {message}")
 
 
 @dataclass(frozen=True)
@@ -454,13 +464,14 @@ def resolve_tag(version: str | None) -> str:
 def prepare_repo(checkout_dir: Path, repo_url: str) -> Path:
     if not os.path.lexists(checkout_dir):
         checkout_dir.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--quiet", "--no-checkout", repo_url, str(checkout_dir)])
+        run(["git", "clone", "--quiet", "--", repo_url, str(checkout_dir)])
     git(checkout_dir, "fetch", "--quiet", "--tags", "--force", "origin")
     return checkout_dir
 
 
 def list_tag_skills(repo_dir: Path, tag: str) -> tuple[str, ...]:
-    paths = git(repo_dir, "ls-tree", "-r", "--name-only", tag, "--", SKILLS_DIR).splitlines()
+    listing = git(repo_dir, "ls-tree", "-r", "-z", "--name-only", f"refs/tags/{tag}", "--", SKILLS_DIR)
+    paths = listing.split("\0")
     names = sorted(
         parts[1]
         for parts in (path.split("/") for path in paths)
@@ -485,7 +496,7 @@ def preflight(version: str | None, repo_url: str, checkout_dir: Path) -> Release
 def checkout_tag(checkout_dir: Path, tag: str, report: Report) -> None:
     report.action(f"check out {tag} in {checkout_dir}")
     if not report.dry_run:
-        git(checkout_dir, "checkout", "--quiet", "--detach", tag)
+        git(checkout_dir, "checkout", "--quiet", "--detach", f"refs/tags/{tag}")
 
 
 def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], report: Report) -> LinkChanges:
@@ -538,7 +549,7 @@ def main() -> int:
         completed = "checkout"
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         completed = "links"
-    except SyncError as error:
+    except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
@@ -658,7 +669,7 @@ def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], re
         link = agents_dir / name
         target = skills_root / name
         if link.is_symlink():
-            if Path(os.readlink(link)) == target:
+            if link_target(link) == target:
                 continue
             report.action(f"update link {link} -> {target}")
             changes.updated.append(name)
@@ -765,12 +776,20 @@ Add these methods to `SyncSuperpowersTest`:
 
         self.assertEqual(result.returncode, 1)
         self.assertIn("tag v9.9.9 not found", result.stderr)
+
+    def test_failed_first_run_does_not_block_next_run(self) -> None:
+        self.assertEqual(self.run_sync("--version", "v9.9.9").returncode, 1)
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        self.assertEqual(self.checkout_tag(), "v1.0.0")
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: `test_dirty_checkout_is_refused`, `test_wrong_origin_is_refused`, and `test_real_directory_in_agents_dir_is_refused` FAIL. `test_unknown_tag_is_refused` passes.
+Expected: `test_dirty_checkout_is_refused`, `test_wrong_origin_is_refused`, and `test_real_directory_in_agents_dir_is_refused` FAIL. `test_unknown_tag_is_refused` and `test_failed_first_run_does_not_block_next_run` pass.
 
 - [ ] **Step 3: Add the checks**
 
@@ -802,7 +821,7 @@ def prepare_repo(checkout_dir: Path, repo_url: str) -> Path:
         require_clean_checkout(checkout_dir, repo_url)
     else:
         checkout_dir.parent.mkdir(parents=True, exist_ok=True)
-        run(["git", "clone", "--quiet", "--no-checkout", repo_url, str(checkout_dir)])
+        run(["git", "clone", "--quiet", "--", repo_url, str(checkout_dir)])
     git(checkout_dir, "fetch", "--quiet", "--tags", "--force", "origin")
     return checkout_dir
 ```
@@ -832,7 +851,7 @@ In `main`, replace `release = preflight(args.version, args.repo_url, checkout_di
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 10 tests, `OK`.
+Expected: 11 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1093,7 +1112,7 @@ def main() -> int:
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         warn_duplicates(release.skills, report)
         completed = "links"
-    except SyncError as error:
+    except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
@@ -1105,7 +1124,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 15 tests, `OK`.
+Expected: 16 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1210,7 +1229,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 16 tests, `OK`.
+Expected: 17 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1299,7 +1318,10 @@ def prepare_repo(checkout_dir: Path, repo_url: str, dry_run: bool, temp_dirs: li
         else:
             checkout_dir.parent.mkdir(parents=True, exist_ok=True)
             repo_dir = checkout_dir
-        run(["git", "clone", "--quiet", "--no-checkout", repo_url, str(repo_dir)])
+        # The temporary clone is read only with ls-tree, so it skips the working tree.
+        # The real checkout gets one, so a failed run leaves it clean for the next run.
+        clone_mode = ["--no-checkout"] if dry_run else []
+        run(["git", "clone", "--quiet", *clone_mode, "--", repo_url, str(repo_dir)])
     git(repo_dir, "fetch", "--quiet", "--tags", "--force", "origin")
     return repo_dir
 ```
@@ -1349,7 +1371,7 @@ def main() -> int:
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         warn_duplicates(release.skills, report)
         completed = "links"
-    except SyncError as error:
+    except (SyncError, OSError) as error:
         print(f"error: {error}", file=sys.stderr)
         if completed:
             print(f"last completed phase: {completed}; run again to finish", file=sys.stderr)
@@ -1364,7 +1386,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 18 tests, `OK`.
+Expected: 19 tests, `OK`.
 
 Also run the full suite to check nothing else broke:
 Run: `python3 -m unittest discover -s tests -v`

@@ -85,7 +85,7 @@ The script runs every check before it changes the working tree, a plugin, or a l
    - Otherwise `gh release view -R obra/superpowers --json tagName`.
 3. Get the repository:
    - If the checkout exists, it is a git repository whose `origin` URL equals `--repo-url`, and `git status --porcelain --untracked-files=all` is empty.
-   - If the checkout is missing: `git clone --no-checkout <repo-url> <checkout-dir>`.
+   - If the checkout is missing: `git clone -- <repo-url> <checkout-dir>`. A dry run clones with `--no-checkout` into a temporary directory instead.
    - Then: `git -C <checkout-dir> fetch --tags --force origin`.
 4. The tag exists: `git -C <checkout-dir> rev-parse --verify refs/tags/<tag>` succeeds.
 5. Read the skill names in the tag with `git -C <checkout-dir> ls-tree --name-only <tag> skills/`, keeping entries that contain `SKILL.md`. For each name, `<agents-skills-dir>/<name>` is missing or a symlink. A real file or directory at that path is an error.
