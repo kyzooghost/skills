@@ -33,8 +33,9 @@ DEFAULT_CHECKOUT_DIR = Path.home() / ".local" / "share" / "superpowers"
 DEFAULT_AGENTS_SKILLS_DIR = Path.home() / ".agents" / SKILLS_DIR
 REQUIRED_TOOLS = ("git", "claude", "codex")
 
-# Cursor reads all of these roots, and Codex reads ~/.codex/skills, so a
-# superpowers skill in one of them appears twice.
+# A superpowers skill here appears twice: Claude Code lists ~/.claude/skills beside
+# the plugin skill, Codex lists ~/.codex/skills beside ~/.agents/skills, and
+# Cursor collapses duplicates only from 3.17.
 DUPLICATE_SKILL_ROOTS = (".claude", ".codex", ".cursor")
 
 
