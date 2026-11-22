@@ -1,15 +1,23 @@
 ---
 name: sync-skill
-description: Sync a skill from this repo into the local machine's skill directories. Use when the user asks to make a repo skill available locally, sync a local skill for Claude, Agents, or Codex, update local skill symlinks, or follow the .claude/skills source link pattern with .agents/skills and .codex/skills symlinks.
+description: Sync a skill from this repo into the local machine's skill directories. Use when the user asks to make a repo skill available locally, sync a local skill for Claude, Codex, or Cursor, update local skill symlinks, or follow the .claude/skills source link pattern with .agents/skills symlinks.
 ---
 
 # Sync Skill
 
 ## Overview
 
-Sync a skill from this repository by making `~/.claude/skills/<skill>` the source-facing symlink to the repo skill, then making `~/.agents/skills/<skill>` and `~/.codex/skills/<skill>` point at the Claude skill path.
+Sync a skill from this repository by making `~/.claude/skills/<skill>` the source-facing symlink to the repo skill, then making `~/.agents/skills/<skill>` point at the Claude skill path.
 
-Codex discovers local functionality from `~/.codex/skills` in this setup. Do not install command files into `~/.codex/commands` expecting Codex to recognize them. When the source artifact is a repo command under `commands/<name>.md`, use `$sync-command`; it creates or reuses a command-backed skill for Codex.
+| Tool | Reads |
+|---|---|
+| Claude Code | `~/.claude/skills` |
+| Codex | `~/.agents/skills` (and legacy `~/.codex/skills`) |
+| Cursor | `~/.agents/skills`, `~/.claude/skills`, `~/.codex/skills`, `~/.cursor/skills`, collapsing same-name duplicates since Cursor 3.17 |
+
+Codex lists a skill twice when it is in both `~/.agents/skills` and `~/.codex/skills`. The installer therefore does not link into `~/.codex/skills`, and it removes a link there that resolves to the same skill.
+
+Do not install command files into `~/.codex/commands` expecting Codex to recognize them. When the source artifact is a repo command under `commands/<name>.md`, use `$sync-command`; it creates or reuses a command-backed skill for Codex.
 
 Use the bundled script for the filesystem changes so repeated syncs update links consistently.
 
@@ -29,11 +37,12 @@ Example from this repo:
 python3 skills/sync-skill/scripts/install_local_skill.py handover
 ```
 
-4. Verify the output shows all three managed links:
+4. Verify the output shows both managed links:
    - `~/.claude/skills/<skill>` -> repo skill directory
    - `~/.agents/skills/<skill>` -> `~/.claude/skills/<skill>`
-   - `~/.codex/skills/<skill>` -> `~/.claude/skills/<skill>`
-5. For Codex, verify `~/.codex/skills/<skill>/SKILL.md` is readable through the symlink.
+
+   A `codex: removed duplicate ...` line means a legacy `~/.codex/skills` link was removed.
+5. For Codex and Cursor, verify `~/.agents/skills/<skill>/SKILL.md` is readable through the symlink.
 6. Tell the user to restart the relevant agent app so it reloads skill metadata.
 
 ## Existing Installs
@@ -43,6 +52,7 @@ The installer replaces whatever is already at the destination:
 - Missing links are created.
 - Existing symlinks are replaced when they point somewhere else.
 - Existing real files or directories are removed and replaced with the symlink.
+- A `~/.codex/skills/<skill>` symlink that resolves to the same skill is removed. Any other entry in `~/.codex/skills` is left unchanged.
 
 ## Options
 

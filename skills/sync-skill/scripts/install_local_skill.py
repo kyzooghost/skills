@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Install a repo skill into local Claude, Agents, and Codex skill roots."""
+"""Install a repo skill into local Claude and Agents skill roots.
+
+Codex and Cursor read ~/.agents/skills. Codex also reads ~/.codex/skills and lists
+same-name skills from both, so the installer removes legacy links there.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +39,7 @@ class LinkPlan:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Install or refresh a repo skill as local Claude, Agents, and Codex symlinks.",
+        description="Install or refresh a repo skill as local Claude and Agents symlinks.",
     )
     parser.add_argument(
         "skill",
@@ -63,7 +67,7 @@ def parse_args() -> argparse.Namespace:
         "--codex-skills-dir",
         type=Path,
         default=HOME_SKILL_ROOTS["codex"],
-        help="Codex skills directory.",
+        help="Legacy Codex skills directory. A link there to this skill is removed as a duplicate.",
     )
     parser.add_argument(
         "--dry-run",
@@ -138,8 +142,16 @@ def build_plan(args: argparse.Namespace, source: Path) -> list[LinkPlan]:
     return [
         LinkPlan("claude", claude_link, source),
         LinkPlan("agents", args.agents_skills_dir.expanduser() / skill_name, claude_link),
-        LinkPlan("codex", args.codex_skills_dir.expanduser() / skill_name, claude_link),
     ]
+
+
+def remove_legacy_codex_link(codex_link: Path, source: Path, dry_run: bool) -> bool:
+    """Remove a Codex link that resolves to this skill. Leave every other entry alone."""
+    if not codex_link.is_symlink() or codex_link.resolve() != source.resolve():
+        return False
+    if not dry_run:
+        codex_link.unlink()
+    return True
 
 
 def main() -> int:
@@ -153,6 +165,11 @@ def main() -> int:
         display_status = DRY_RUN_VERBS.get(status, status) if args.dry_run else status
         prefix = "would " if args.dry_run and status != "unchanged" else ""
         print(f"{item.label}: {prefix}{display_status} {item.link_path} -> {item.target_path}")
+
+    codex_link = args.codex_skills_dir.expanduser() / source.name
+    if remove_legacy_codex_link(codex_link, source, args.dry_run):
+        verb = "would remove" if args.dry_run else "removed"
+        print(f"codex: {verb} duplicate {codex_link}")
 
     return 0
 
