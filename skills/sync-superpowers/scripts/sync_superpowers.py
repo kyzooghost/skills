@@ -183,12 +183,19 @@ def run_write(cmd: list[str], report: Report) -> None:
         run(cmd)
 
 
-def read_json(cmd: list[str]) -> object:
+def read_json_list(cmd: list[str], key: str | None = None) -> list[dict]:
+    """Run a CLI listing and return its list of objects, or the list under `key`."""
     output = run(cmd)
     try:
-        return json.loads(output)
+        value = json.loads(output)
     except json.JSONDecodeError as error:
         raise SyncError(f"invalid JSON from {shlex.join(cmd)}: {error}") from None
+    if key is not None:
+        value = value.get(key, []) if isinstance(value, dict) else None
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        field_note = f" field {key!r}" if key else ""
+        raise SyncError(f"unexpected JSON from {shlex.join(cmd)}{field_note}: expected a list of objects")
+    return value
 
 
 def points_at(marketplace: dict, checkout_dir: Path) -> bool:
@@ -202,38 +209,43 @@ def points_at(marketplace: dict, checkout_dir: Path) -> bool:
 
 def verify_claude(tag: str) -> dict:
     expected = tag.removeprefix("v")
-    for plugin in read_json(["claude", "plugin", "list", "--json"]):
+    for plugin in read_json_list(["claude", "plugin", "list", "--json"]):
         if plugin.get("id") == PLUGIN_ID and plugin.get("scope") == USER_SCOPE:
-            if plugin.get("version") != expected or not plugin.get("enabled"):
+            if not plugin.get("enabled"):
+                raise SyncError(f"Claude reports {PLUGIN_ID} disabled; run: claude plugin enable {PLUGIN_ID}")
+            if plugin.get("version") != expected:
                 raise SyncError(
-                    f"Claude reports {PLUGIN_ID} version {plugin.get('version')} "
-                    f"enabled={plugin.get('enabled')}; expected {expected} enabled"
+                    f"Claude reports {PLUGIN_ID} version {plugin.get('version')}; expected {expected}"
                 )
             return plugin
     raise SyncError(f"Claude does not list {PLUGIN_ID} at user scope after install")
 
 
 def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
-    marketplaces = read_json(["claude", "plugin", "marketplace", "list", "--json"])
+    marketplaces = read_json_list(["claude", "plugin", "marketplace", "list", "--json"])
     current = next((m for m in marketplaces if m.get("name") == MARKETPLACE), None)
     add = ["claude", "plugin", "marketplace", "add", str(checkout_dir)]
+    replaced = False
     if current is None:
         run_write(add, report)
     elif not points_at(current, checkout_dir):
-        # Removing the marketplace also uninstalls its plugins, so the
-        # plugin list read below sees ours as missing and reinstalls it.
+        # Removing the marketplace also uninstalls its plugins, so the plugin
+        # must be installed again. Track it here so a dry run reports the same.
         run_write(["claude", "plugin", "marketplace", "remove", MARKETPLACE], report)
         run_write(add, report)
+        replaced = True
     else:
         run_write(["claude", "plugin", "marketplace", "update", MARKETPLACE], report)
 
-    plugins = read_json(["claude", "plugin", "list", "--json"])
-    installed = any(p.get("id") == PLUGIN_ID and p.get("scope") == USER_SCOPE for p in plugins)
+    plugins = read_json_list(["claude", "plugin", "list", "--json"])
+    installed = not replaced and any(
+        p.get("id") == PLUGIN_ID and p.get("scope") == USER_SCOPE for p in plugins
+    )
     run_write(["claude", "plugin", "update" if installed else "install", PLUGIN_ID], report)
 
     uninstalled: set[str] = set()
     for plugin in plugins:
-        plugin_id = plugin.get("id", "")
+        plugin_id = plugin.get("id") or ""
         if plugin_id == PLUGIN_ID or plugin_id.split("@")[0] != PLUGIN:
             continue
         scope = plugin.get("scope")
@@ -242,7 +254,7 @@ def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
                 run_write(["claude", "plugin", "uninstall", plugin_id], report)
                 uninstalled.add(plugin_id)
         else:
-            project = plugin.get("projectPath", "an unknown project")
+            project = plugin.get("projectPath") or "an unknown project"
             report.warn(f"Claude plugin {plugin_id} is installed at {scope} scope for {project}; left unchanged")
 
     if report.dry_run:

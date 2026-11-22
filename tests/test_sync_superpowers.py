@@ -465,7 +465,6 @@ class SyncSuperpowersTest(unittest.TestCase):
     def test_second_run_updates_marketplace_and_plugin(self) -> None:
         self.assert_ok(self.run_sync("--version", "v1.0.0"))
         self.clear_log()
-        self.update_state(plugin_version="1.1.0")
 
         result = self.run_sync("--version", "v1.1.0")
 
@@ -539,6 +538,15 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("expected 1.0.0", result.stderr)
         self.assertIn("last completed phase: checkout", result.stderr)
+
+    def test_unexpected_json_shape_fails_cleanly(self) -> None:
+        self.update_state(claude_marketplaces={"marketplaces": []})
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unexpected JSON from claude plugin marketplace list --json", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 if __name__ == "__main__":
