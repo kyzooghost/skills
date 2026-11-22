@@ -11,6 +11,15 @@ Resolve the user's required friendly model inputs against the active agent envir
 5. Never downgrade, upgrade, or silently substitute a selected model.
 6. Cursor uses one slug field. Codex uses separate `model` and `reasoning_effort` fields.
 
+## Claude Code mappings
+
+Claude Code dispatches through the Agent tool: `model` takes an alias and `effort` takes a level. Alias versions are confirmed by the user, not detected.
+
+- `Sonnet 5.5 medium` -> Agent `model` `sonnet`, `effort` `medium`
+- `Sonnet 5.5 high` -> Agent `model` `sonnet`, `effort` `high`
+- `Opus 5.5 high` -> Agent `model` `opus`, `effort` `high`
+- `Fable 5.2 high` -> Agent `model` `fable`, `effort` `high`
+
 ## Cursor mappings
 
 - `Grok 4.7` -> slug `cursor-grok-4.7-high`
@@ -22,6 +31,7 @@ Resolve the user's required friendly model inputs against the active agent envir
 ## Dispatch contract
 
 - Every implementer dispatch uses the resolved `IMPLEMENTOR_MODEL` configuration.
-- Every task reviewer, final reviewer, and differential-review subagent uses the resolved `REVIEWER_MODEL` configuration.
+- Every task reviewer, final whole-branch reviewer, and post-`/create-pr` reviewer uses the resolved `REVIEWER_MODEL` configuration.
+- The differential-review subagent uses the resolved `DIFF_REVIEWER_MODEL` configuration.
 - More context, task decomposition, and same-model redispatch are allowed.
 - Any model change requires new human input.
