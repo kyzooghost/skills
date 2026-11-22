@@ -91,6 +91,7 @@ GIT_REPO_VARS = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR")
 FAKE_CLI = r'''
 import json
 import os
+import subprocess
 import sys
 
 tool, args = sys.argv[1], sys.argv[2:]
@@ -116,6 +117,19 @@ def save():
 
 def emit(value):
     print(json.dumps(value))
+
+
+def plugin_version():
+    # Real Claude reports the version of the checkout tag. A test can pin a
+    # different version in state to simulate a stale or broken install.
+    if state["plugin_version"] is not None:
+        return state["plugin_version"]
+    path = next(m["path"] for m in state["claude_marketplaces"] if m["name"] == "superpowers-dev")
+    tag = subprocess.run(
+        ["git", "-C", path, "describe", "--tags", "--exact-match"],
+        check=True, capture_output=True, text=True,
+    ).stdout.strip()
+    return tag.removeprefix("v")
 
 
 sub = args[1:]  # drop "release" for gh, "plugin" for claude and codex
@@ -144,13 +158,13 @@ elif tool == "claude":
         emit(state["claude_plugins"])
     elif sub[:1] == ["install"]:
         state["claude_plugins"].append(
-            {"id": sub[1], "version": state["plugin_version"], "scope": "user", "enabled": True}
+            {"id": sub[1], "version": plugin_version(), "scope": "user", "enabled": True}
         )
         save()
     elif sub[:1] == ["update"]:
         for plugin in state["claude_plugins"]:
             if plugin["id"] == sub[1] and plugin["scope"] == "user":
-                plugin["version"] = state["plugin_version"]
+                plugin["version"] = plugin_version()
         save()
     elif sub[:1] == ["uninstall"]:
         state["claude_plugins"] = [
@@ -235,7 +249,7 @@ def install_fake_cli(bin_dir: Path) -> None:
 def default_state() -> dict:
     return {
         "latest_tag": "v1.1.0",
-        "plugin_version": "1.0.0",
+        "plugin_version": None,
         "fail": None,
         "claude_marketplaces": [],
         "claude_plugins": [],
