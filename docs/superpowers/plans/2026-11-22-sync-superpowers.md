@@ -643,6 +643,21 @@ Add these methods to `SyncSuperpowersTest`:
         self.assertTrue((self.agents / "real-dir").is_dir())
         self.assertIn("links: 1 created, 0 updated, 1 removed, 2 total", result.stdout)
 
+    def test_pruning_resolves_links_through_a_symlinked_agents_dir(self) -> None:
+        # ~/.agents is a symlink into a deeper directory, as in a dotfiles setup.
+        real_agents = self.root / "dotfiles" / "deep" / "agents"
+        (real_agents / "skills").mkdir(parents=True)
+        (self.home / ".agents").symlink_to(real_agents)
+        # As text, this link points into the checkout. The OS resolves ".." from
+        # the real directory, so it points under dotfiles and is not ours.
+        (self.agents / "beta").symlink_to(Path("..") / ".." / ".." / "checkout" / "skills" / "beta")
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertTrue((self.agents / "beta").is_symlink())
+        self.assertIn("links: 2 created, 0 updated, 0 removed, 2 total", result.stdout)
+
     def test_superpowers_skill_in_other_skill_roots_warns(self) -> None:
         roots = [self.home / root / "skills" for root in (".claude", ".codex", ".cursor")]
         for skills_dir in roots:
@@ -740,7 +755,7 @@ In `main`, replace the line `links = sync_links(agents_dir, checkout_dir, releas
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 7 tests, `OK`.
+Expected: 8 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -874,7 +889,7 @@ In `main`, replace `release = preflight(args.version, args.repo_url, checkout_di
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 12 tests, `OK`.
+Expected: 13 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1147,7 +1162,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 17 tests, `OK`.
+Expected: 18 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1252,7 +1267,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 18 tests, `OK`.
+Expected: 19 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1409,7 +1424,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 20 tests, `OK`.
+Expected: 21 tests, `OK`.
 
 Also run the full suite to check nothing else broke:
 Run: `python3 -m unittest discover -s tests -v`
