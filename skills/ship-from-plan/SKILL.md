@@ -174,22 +174,22 @@ set -euo pipefail
 gh pr checks "$PR_NUMBER" --json name,state,bucket,link,workflow
 ```
 
-With `--json`, `gh pr checks` exits 0 even when checks fail or are pending. A nonzero exit means the PR has no checks or the command failed. If no checks exist, stop because readiness cannot be established. For any other error, stop and report it.
+With `--json`, `gh pr checks` exits 0 even when checks fail or are pending. A nonzero exit means the PR has no checks or the command failed. Checks can take a short time to appear after a push. On the error `no checks reported on the '<branch>' branch`, retry for up to 5 minutes. If no checks appear, stop because readiness cannot be established. For any other error, stop and report it.
 
 Classify each check by its `state`, not its `bucket`. `gh` puts `ACTION_REQUIRED` in the `fail` bucket, so a bucket-only reading treats an approval gate as a failure.
 
 - Approval-gated: `state` is `WAITING` or `ACTION_REQUIRED`. The check waits for a human, such as an environment review or a workflow-run approval.
 - Automatic: every other check.
 
-Wait until every automatic check is terminal, which means its `bucket` is not `pending`. Polling does not count as a fix round. Jobs that a pending approval blocks may not exist yet. Do not wait for them.
+Wait until every automatic check is terminal, which means its `bucket` is not `pending`. An automatic check passed when its `bucket` is `pass` or `skipping`. Polling does not count as a fix round. Jobs that a pending approval blocks may not exist yet. Do not wait for them.
 
 Then act on the result:
 
 | Automatic checks | Approval-gated checks | Action |
 |---|---|---|
 | One or more failed, cancelled, or timed out | Any | Run a fix round. |
-| All passed | None pending | CI is green. Continue to Final Readiness. |
-| All passed | One or more pending | Stop. Report each gated check `name`, `workflow`, and `link`. |
+| All passed | None | CI is green. Continue to Final Readiness. |
+| All passed | One or more | Stop CI convergence. Record each gated check `name`, `workflow`, and `link`, and continue to Final Readiness, which reports `CONDITIONAL`. |
 
 A fix round:
 
@@ -202,9 +202,9 @@ A fix round:
 
 If a fix requires human product or design authority, leave the PR ready and stop with the decision required.
 
-Track the number of failed automatic checks after every completed fix round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
+Count automatic checks whose `bucket` is `fail` or `cancel` before the first fix round and after every completed round. Stop after 3 consecutive rounds that do not reduce that number. Report every attempted commit and the remaining failures.
 
-Never count polling calls as rounds. Never claim green while an automatic check is missing, pending, skipped without an accepted policy, failed, cancelled, or timed out, or while an approval-gated check is pending.
+Never count polling calls as rounds. Never claim green while an automatic check is missing, pending, failed, cancelled, or timed out, or while an approval-gated check exists.
 
 ## Final Readiness
 
