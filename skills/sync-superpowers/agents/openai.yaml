@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sync Superpowers"
+  short_description: "Install or update superpowers for Claude, Codex, and Cursor"
+  default_prompt: "Use $sync-superpowers to update superpowers to the latest release."
