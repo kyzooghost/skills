@@ -624,23 +624,42 @@ Add these methods to `SyncSuperpowersTest`:
 
         self.assert_ok(result)
         self.assertEqual(self.link_targets()["alpha"], self.checkout / "skills" / "alpha")
+        self.assertIn("links: 1 created, 1 updated, 0 removed, 2 total", result.stdout)
 
-    def test_superpowers_skill_in_claude_skills_warns(self) -> None:
-        claude_skills = self.home / ".claude" / "skills"
-        claude_skills.mkdir(parents=True)
-        (claude_skills / "alpha").mkdir()
+    def test_pruning_only_removes_links_into_the_checkout(self) -> None:
+        self.assert_ok(self.run_sync("--version", "v1.0.0"))
+        other_skill = self.root / "other" / "skills" / "beta-other"
+        other_skill.mkdir(parents=True)
+        (self.agents / "beta-other").symlink_to(other_skill)
+        (self.agents / "real-dir").mkdir()
+        for name in ("alpha", "beta"):
+            (self.agents / name).unlink()
+            (self.agents / name).symlink_to(os.path.relpath(self.checkout / "skills" / name, self.agents))
+
+        result = self.run_sync("--version", "v1.1.0")
+
+        self.assert_ok(result)
+        self.assertEqual(set(self.link_targets()), {"alpha", "gamma", "beta-other"})
+        self.assertTrue((self.agents / "real-dir").is_dir())
+        self.assertIn("links: 1 created, 0 updated, 1 removed, 2 total", result.stdout)
+
+    def test_superpowers_skill_in_other_skill_roots_warns(self) -> None:
+        roots = [self.home / root / "skills" for root in (".claude", ".codex", ".cursor")]
+        for skills_dir in roots:
+            (skills_dir / "alpha").mkdir(parents=True)
 
         result = self.run_sync("--version", "v1.0.0")
 
         self.assert_ok(result)
-        self.assertIn(f"warning: {claude_skills / 'alpha'} duplicates superpowers skill alpha", result.stdout)
-        self.assertTrue((claude_skills / "alpha").is_dir())
+        for skills_dir in roots:
+            self.assertIn(f"warning: {skills_dir / 'alpha'} duplicates superpowers skill alpha", result.stdout)
+            self.assertTrue((skills_dir / "alpha").is_dir())
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: `test_upgrade_adds_new_skills_and_prunes_removed_ones` FAILS (`beta` link still present). `test_superpowers_skill_in_claude_skills_warns` FAILS (no warning). The other two pass.
+Expected: `test_upgrade_adds_new_skills_and_prunes_removed_ones` FAILS (`beta` link still present). `test_superpowers_skill_in_other_skill_roots_warns` FAILS (no warning). `test_pruning_only_removes_links_into_the_checkout` FAILS (`beta` not pruned). The other two pass.
 
 - [ ] **Step 3: Add pruning and duplicate warnings**
 
@@ -656,10 +675,14 @@ Replace `sync_links` with:
 
 ```python
 def link_target(link: Path) -> Path:
+    """Return the absolute target of a symlink, without following the final component."""
     target = Path(os.readlink(link))
     if not target.is_absolute():
         target = link.parent / target
-    return Path(os.path.normpath(target))
+    # The OS resolves ".." through the real parent directory, so resolve the
+    # parent through the file system, not as text. The skill directory itself
+    # may already be gone after a tag change, so do not resolve the last part.
+    return Path(os.path.realpath(target.parent)) / target.name
 
 
 def sync_links(agents_dir: Path, checkout_dir: Path, skills: tuple[str, ...], report: Report) -> LinkChanges:
@@ -717,7 +740,7 @@ In `main`, replace the line `links = sync_links(agents_dir, checkout_dir, releas
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 6 tests, `OK`.
+Expected: 7 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -851,7 +874,7 @@ In `main`, replace `release = preflight(args.version, args.repo_url, checkout_di
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 11 tests, `OK`.
+Expected: 12 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1124,7 +1147,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 16 tests, `OK`.
+Expected: 17 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1229,7 +1252,7 @@ with:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 17 tests, `OK`.
+Expected: 18 tests, `OK`.
 
 - [ ] **Step 5: Commit**
 
@@ -1386,7 +1409,7 @@ def main() -> int:
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `python3 -m unittest discover -s tests -p 'test_sync_superpowers.py' -v`
-Expected: 19 tests, `OK`.
+Expected: 20 tests, `OK`.
 
 Also run the full suite to check nothing else broke:
 Run: `python3 -m unittest discover -s tests -v`
