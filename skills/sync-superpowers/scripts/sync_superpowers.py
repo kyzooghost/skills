@@ -262,6 +262,30 @@ def sync_claude(checkout_dir: Path, tag: str, report: Report) -> dict | None:
     return verify_claude(tag)
 
 
+def installed_codex_superpowers() -> list[str]:
+    installed = read_json_list(["codex", "plugin", "list", "--json"], key="installed")
+    return [
+        plugin["pluginId"]
+        for plugin in installed
+        if plugin.get("name") == PLUGIN and plugin.get("installed")
+    ]
+
+
+def sync_codex(report: Report) -> None:
+    # Codex reads ~/.agents/skills, so any superpowers plugin would duplicate the links.
+    for plugin_id in installed_codex_superpowers():
+        run_write(["codex", "plugin", "remove", plugin_id], report)
+
+    marketplaces = read_json_list(["codex", "plugin", "marketplace", "list", "--json"], key="marketplaces")
+    if any(m.get("name") == MARKETPLACE for m in marketplaces):
+        run_write(["codex", "plugin", "marketplace", "remove", MARKETPLACE], report)
+
+    if not report.dry_run:
+        remaining = installed_codex_superpowers()
+        if remaining:
+            raise SyncError(f"Codex still lists installed superpowers plugins: {', '.join(remaining)}")
+
+
 def link_target(link: Path) -> Path:
     """Return the absolute target of a symlink, without following the final component."""
     target = Path(os.readlink(link))
@@ -350,6 +374,8 @@ def main() -> int:
         completed = "checkout"
         claude_plugin = sync_claude(checkout_dir, release.tag, report)
         completed = "claude"
+        sync_codex(report)
+        completed = "codex"
         links = sync_links(agents_dir, checkout_dir, release.skills, report)
         warn_duplicates(release.skills, report)
         completed = "links"

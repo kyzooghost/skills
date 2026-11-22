@@ -548,6 +548,35 @@ class SyncSuperpowersTest(unittest.TestCase):
         self.assertIn("unexpected JSON from claude plugin marketplace list --json", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_codex_superpowers_plugins_and_marketplace_removed(self) -> None:
+        self.update_state(
+            codex_plugins=[
+                {"pluginId": "superpowers@superpowers-dev", "name": "superpowers", "installed": True},
+                {"pluginId": "superpowers@openai-curated-remote", "name": "superpowers", "installed": True},
+                {"pluginId": "github@openai-curated-remote", "name": "github", "installed": True},
+            ],
+            codex_marketplaces=[
+                {"name": MARKETPLACE, "root": "/tmp/x"},
+                {"name": "openai-curated", "root": "/tmp/y"},
+            ],
+        )
+
+        result = self.run_sync("--version", "v1.0.0")
+
+        self.assert_ok(result)
+        codex_writes = [c for c in self.tool_calls("codex") if "list" not in c]
+        self.assertEqual(
+            codex_writes,
+            [
+                ["codex", "plugin", "remove", "superpowers@superpowers-dev"],
+                ["codex", "plugin", "remove", "superpowers@openai-curated-remote"],
+                ["codex", "plugin", "marketplace", "remove", MARKETPLACE],
+            ],
+        )
+        state = self.read_state()
+        self.assertEqual([p["pluginId"] for p in state["codex_plugins"]], ["github@openai-curated-remote"])
+        self.assertEqual([m["name"] for m in state["codex_marketplaces"]], ["openai-curated"])
+
 
 if __name__ == "__main__":
     unittest.main()
