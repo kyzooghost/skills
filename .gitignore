@@ -40,3 +40,5 @@ coverage/
 tmp/
 .cursor
 docs/plans/*
+# Python
+__pycache__/
